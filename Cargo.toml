@@ -1,0 +1,9 @@
+[package]
+name = "dozenal_calc"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+eframe = "0.27.0"
+egui = "0.27.0"
+meval = "0.2"

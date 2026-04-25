@@ -31,7 +31,7 @@ Stelle sicher, dass du Rust und Cargo installiert hast.
    git clone [https://github.com/Bawdyness/dozenal_calc.git](https://github.com/Bawdyness/dozenal_calc.git)
    cd dozenal_calc
    ```
-3. Projekt starten:
+2. Projekt starten:
     
   ```bash
   cargo run

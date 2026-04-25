@@ -26,7 +26,11 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "Dozenal Calc",
         native_options,
-        Box::new(|_cc| Box::new(DozenalCalcApp::default())),
+        Box::new(|cc| {
+            // --- HIER ZWINGEN WIR DEN DESKTOP IN DEN DUNKELMODUS ---
+            cc.egui_ctx.set_visuals(egui::Visuals::dark());
+            Box::new(DozenalCalcApp::default())
+        }),
     )
 }
 
@@ -43,7 +47,11 @@ fn main() {
             .start(
                 "the_canvas_id", // Diese ID muss in deiner index.html stehen
                 web_options,
-                Box::new(|_cc| Box::new(DozenalCalcApp::default())),
+                Box::new(|cc| {
+                    // --- HIER ZWINGEN WIR DAS HANDY/WEB IN DEN DUNKELMODUS ---
+                    cc.egui_ctx.set_visuals(egui::Visuals::dark());
+                    Box::new(DozenalCalcApp::default())
+                }),
             )
             .await
             .expect("failed to start eframe");

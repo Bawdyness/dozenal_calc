@@ -7,18 +7,22 @@
         <link data-trunk rel="rust" href="Cargo.toml" />
         
         <style>
-            html, body { 
-                height: 100%; 
-                margin: 0; 
-                padding: 0; 
-                background-color: #1a1a1a; 
-            }
-            canvas { 
-                width: 100%; 
-                height: 100%; 
-                display: block;
-            }
-        </style>
+          html, body { 
+              height: 100dvh; /* Nutzt die dynamische Höhe */
+              width: 100vw;
+              margin: 0; 
+              padding: 0; 
+              overflow: hidden; /* Verhindert Scrollen */
+              background-color: #1a1a1a; 
+              position: fixed; /* Fixiert den Viewport gegen "Hüpfen" */
+              touch-action: none; /* Verhindert Standard-Gesten wie Pull-to-refresh */
+          }
+          canvas { 
+              width: 100%; 
+              height: 100%; 
+              display: block;
+          }
+      </style>
     </head>
     <body>
         <canvas id="the_canvas_id"></canvas>

@@ -26,7 +26,7 @@ fn main() -> eframe::Result<()> {
         ..Default::default()
     };
     eframe::run_native(
-        "Scientific Dozenal Calculator",
+        "Dozenal Calc",
         native_options,
         Box::new(|_cc| Box::new(DozenalCalcApp::default())),
     )
@@ -212,7 +212,7 @@ impl eframe::App for DozenalCalcApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.vertical_centered(|ui| {
-                ui.heading("Dozenal fx-5800P Core");
+                ui.heading("Dozenal Calc");
                 ui.add_space(10.0);
 
                 // --- DISPLAY ---

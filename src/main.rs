@@ -54,7 +54,8 @@ struct DozenalCalcApp {
     input_buffer: Vec<CalcToken>,
     result_buffer: Vec<CalcToken>, 
     cursor_pos: usize, 
-    memory: Vec<CalcToken>, // Der Notizblock des Rechners
+    memory: Vec<CalcToken>,
+    error_msg: Option<String>, // Speichert Fehlermeldungen
 }
 
 impl Default for DozenalCalcApp {
@@ -64,6 +65,7 @@ impl Default for DozenalCalcApp {
             result_buffer: vec![CalcToken::Digit(DozenalDigit::D0)],
             cursor_pos: 0,
             memory: Vec::new(),
+            error_msg: None, 
         }
     }
 }
@@ -131,7 +133,7 @@ impl DozenalCalcApp {
         }
     }
 
-    // --- RECHEN-LOGIK ---
+// --- RECHEN-LOGIK ---
     fn calculate_result(&mut self) {
         let mut int_digits = Vec::new();
         let mut frac_digits = Vec::new();
@@ -224,41 +226,54 @@ impl DozenalCalcApp {
         let close_parens = math_string.matches(')').count();
         for _ in 0..(open_parens.saturating_sub(close_parens)) { math_string.push(')'); }
 
-        if let Ok(result) = meval::eval_str(&math_string) {
-            let mut new_result = Vec::new();
-            let mut val = result;
-            if val < 0.0 { new_result.push(CalcToken::Sub); val = val.abs(); }
+        // --- HIER STARTET DIE NEUE FEHLERBEHANDLUNG ---
+        match meval::eval_str(&math_string) {
+            Ok(result) if result.is_finite() => {
+                self.error_msg = None; // Alles gut, eventuelle alte Fehler löschen
+                
+                let mut new_result = Vec::new();
+                let mut val = result;
+                if val < 0.0 { new_result.push(CalcToken::Sub); val = val.abs(); }
 
-            let mut integer_part = val.floor() as u64;
-            let mut int_digits_res = Vec::new();
-            if integer_part == 0 { int_digits_res.push(CalcToken::Digit(DozenalDigit::D0)); }
-            else {
-                while integer_part > 0 {
-                    if let Some(d) = DozenalDigit::from_value((integer_part % 12) as u32) {
-                        int_digits_res.push(CalcToken::Digit(d));
+                let mut integer_part = val.floor() as u64;
+                let mut int_digits_res = Vec::new();
+                if integer_part == 0 { int_digits_res.push(CalcToken::Digit(DozenalDigit::D0)); }
+                else {
+                    while integer_part > 0 {
+                        if let Some(d) = DozenalDigit::from_value((integer_part % 12) as u32) {
+                            int_digits_res.push(CalcToken::Digit(d));
+                        }
+                        integer_part /= 12;
                     }
-                    integer_part /= 12;
+                    int_digits_res.reverse();
                 }
-                int_digits_res.reverse();
-            }
-            new_result.extend(int_digits_res);
+                new_result.extend(int_digits_res);
 
-            let mut frac_part = val - val.floor();
-            if frac_part > 0.000001 {
-                new_result.push(CalcToken::Decimal);
-                for _ in 0..4 {
-                    frac_part *= 12.0;
-                    let d_val = (frac_part + 0.000001).floor() as u32;
-                    if let Some(d) = DozenalDigit::from_value(d_val) {
-                        new_result.push(CalcToken::Digit(d));
+                let mut frac_part = val - val.floor();
+                if frac_part > 0.000001 {
+                    new_result.push(CalcToken::Decimal);
+                    for _ in 0..4 {
+                        frac_part *= 12.0;
+                        let d_val = (frac_part + 0.000001).floor() as u32;
+                        if let Some(d) = DozenalDigit::from_value(d_val) {
+                            new_result.push(CalcToken::Digit(d));
+                        }
+                        frac_part -= d_val as f64;
+                        if frac_part.abs() < 0.000001 { break; }
                     }
-                    frac_part -= d_val as f64;
-                    if frac_part.abs() < 0.000001 { break; }
                 }
+                self.result_buffer = new_result;
+                self.input_buffer.clear();
+                self.cursor_pos = 0; 
+            },
+            Ok(_) => {
+                // Das Ergebnis ist nicht endlich (z.B. Division durch Null)
+                self.error_msg = Some("DIV BY ZERO".to_string());
+            },
+            Err(_) => {
+                // Meval konnte den String gar nicht erst berechnen (Syntaxfehler)
+                self.error_msg = Some("SYNTAX ERROR".to_string());
             }
-            self.result_buffer = new_result;
-            self.input_buffer.clear();
-            self.cursor_pos = 0; 
         }
     }
 
@@ -317,26 +332,28 @@ impl DozenalCalcApp {
         if resp.clicked() { self.handle_click(CalcToken::Equals); }
     }
 
-// --- HANDY LAYOUT (Voll Responsive in Breite UND Höhe) ---
+// --- HANDY LAYOUT (Voll Responsive mit Safe-Area) ---
     fn draw_mobile_layout(&mut self, ui: &mut egui::Ui) {
         let spacing = 8.0;
-        let num_spacing_y = 12.0; // Leicht reduzierter Abstand, damit alles sicher passt
+        let num_spacing_y = 10.0; 
 
-        // --- DIE NEUE DYNAMISCHE HÖHE ---
-        // Wir fragen: Wie viel Platz ist nach unten noch frei?
-        let remaining_h = ui.available_height();
+        // --- DYNAMISCHE HÖHE MIT PUFFER ---
+        let total_h = ui.available_height();
         
-        // Wir ziehen jetzt 150 statt 120 Pixel ab, um unten mehr Platz für die Browserleiste zu lassen.
-        let btn_height = ((remaining_h - 150.0) / 10.0).clamp(30.0, 65.0);
+        // Der Sicherheits-Puffer speziell für die untere Browserleiste
+        let safe_bottom_padding = 60.0;
+        let usable_h = total_h - safe_bottom_padding;
 
-        // Breite berechnen
+        // Abzug für Header/Display (190) und Verteilung auf 10 Reihen
+        let btn_height = ((usable_h - 190.0) / 10.0).clamp(25.0, 60.0); 
+
         let num_btn_width = (ui.available_width() - (2.0 * spacing)) / 3.0;
         let num_btn_size = Vec2::new(num_btn_width, btn_height);
 
         let ops_btn_width = (ui.available_width() - (3.0 * spacing)) / 4.0;
         let ops_btn_size = Vec2::new(ops_btn_width, btn_height);
 
-        // 1. Hilfsarbeiter (verwenden jetzt die dynamische btn_height)
+        // 1. Hilfsarbeiter
         let render_btn = |app: &mut Self, ui: &mut egui::Ui, token: CalcToken, color_normal: Color32| {
             let (rect, resp) = ui.allocate_at_least(ops_btn_size, egui::Sense::click());
             let color = if resp.is_pointer_button_down_on() { Color32::LIGHT_RED } else { color_normal };
@@ -409,7 +426,6 @@ impl DozenalCalcApp {
         ui.add_space(10.0);
 
         // --- BREITE GLEICHHEITSTASTE ---
-        // Das Gleichheitszeichen darf ein kleines bisschen höher sein (Faktor 1.2)
         let equals_size = Vec2::new(ui.available_width(), btn_height * 1.2);
         let (rect, resp) = ui.allocate_at_least(equals_size, egui::Sense::click());
         let color = if resp.is_pointer_button_down_on() { Color32::LIGHT_RED } else { Color32::LIGHT_GREEN };
@@ -484,6 +500,16 @@ impl eframe::App for DozenalCalcApp {
                         }
                     }
                 }
+                       
+                if let Some(msg) = &self.error_msg {
+                    ui.painter().text(
+                        display_rect.center(), 
+                        Align2::CENTER_CENTER, 
+                        msg, 
+                        FontId::monospace(30.0), 
+                        Color32::LIGHT_RED
+                    );
+                }
                 ui.add_space(20.0);
 
                 // --- DER NEUE RESPONSIVE SCHALTER ---
@@ -498,12 +524,13 @@ impl eframe::App for DozenalCalcApp {
     } 
 }
 
+
 // --- ZEICHEN-ROUTINEN ---
 fn paint_token(_ui: &egui::Ui, p: &egui::Painter, rect: Rect, token: CalcToken, color: Color32, width: f32) {
     let s = Stroke::new(width, color);
-    let c = rect.center();
+    let c = rect.center(); // Das exakte Zentrum des Buttons
     
-    // DER FIX: Nimm die kürzere Seite des Kastens, damit nichts überlappt!
+    // Dynamische Größe basierend auf dem Feld
     let min_edge = rect.width().min(rect.height());
     let q = min_edge / 4.0;
     
@@ -514,24 +541,37 @@ fn paint_token(_ui: &egui::Ui, p: &egui::Painter, rect: Rect, token: CalcToken, 
         CalcToken::Sub => { p.line_segment([c - Vec2::new(q, 0.0), c + Vec2::new(q, 0.0)], s); }
         CalcToken::Mul => { p.line_segment([c - Vec2::new(q, q), c + Vec2::new(q, q)], s); p.line_segment([c - Vec2::new(q, -q), c + Vec2::new(q, -q)], s); }
         CalcToken::Div => { p.line_segment([c - Vec2::new(q, -q), c + Vec2::new(q, -q)], s); }
+        
+        // --- DIE NEUEN, ZENTRIERTEN X-OPERATIONEN ---
         CalcToken::ExpTopRight => { 
-            p.text(c + Vec2::new(-q*0.3, q*0.3), Align2::CENTER_CENTER, "x", FontId::monospace(26.0), color);
-            p.rect_stroke(Rect::from_center_size(c + Vec2::new(q*0.9, -q*0.9), Vec2::splat(10.0)), 1.0, s);
+            // X exakt in der Mitte, Größe passt sich dynamisch an (45% der Button-Größe)
+            p.text(c, Align2::CENTER_CENTER, "x", FontId::monospace(min_edge * 0.45), color);
+            // Quadrat in die Ecke oben rechts geschoben
+            p.rect_stroke(Rect::from_center_size(c + Vec2::new(q * 1.3, -q * 1.3), Vec2::splat(min_edge * 0.18)), 1.0, s);
         }
         CalcToken::RootTopLeft => { 
-            p.text(c + Vec2::new(q*0.3, q*0.3), Align2::CENTER_CENTER, "x", FontId::monospace(26.0), color);
-            p.rect_stroke(Rect::from_center_size(c + Vec2::new(-q*0.9, -q*0.9), Vec2::splat(10.0)), 1.0, s);
-        }
-        CalcToken::OplusBotLeft => { 
-            p.text(c + Vec2::new(q*0.3, -q*0.3), Align2::CENTER_CENTER, "x", FontId::monospace(26.0), color);
-            p.rect_stroke(Rect::from_center_size(c + Vec2::new(-q*0.9, q*0.9), Vec2::splat(10.0)), 1.0, s);
-            p.line_segment([c + Vec2::new(-q*0.9, q*0.6), c + Vec2::new(-q*0.9, q*1.2)], Stroke::new(1.0, color));
-            p.line_segment([c + Vec2::new(-q*1.2, q*0.9), c + Vec2::new(-q*0.6, q*0.9)], Stroke::new(1.0, color));
+            p.text(c, Align2::CENTER_CENTER, "x", FontId::monospace(min_edge * 0.45), color);
+            // Quadrat oben links
+            p.rect_stroke(Rect::from_center_size(c + Vec2::new(-q * 1.3, -q * 1.3), Vec2::splat(min_edge * 0.18)), 1.0, s);
         }
         CalcToken::LogBotRight => { 
-            p.text(c + Vec2::new(-q*0.3, -q*0.3), Align2::CENTER_CENTER, "x", FontId::monospace(26.0), color);
-            p.rect_stroke(Rect::from_center_size(c + Vec2::new(q*0.9, q*0.9), Vec2::splat(10.0)), 1.0, s);
+            p.text(c, Align2::CENTER_CENTER, "x", FontId::monospace(min_edge * 0.45), color);
+            // Quadrat unten rechts
+            p.rect_stroke(Rect::from_center_size(c + Vec2::new(q * 1.3, q * 1.3), Vec2::splat(min_edge * 0.18)), 1.0, s);
         }
+        CalcToken::OplusBotLeft => { 
+            p.text(c, Align2::CENTER_CENTER, "x", FontId::monospace(min_edge * 0.45), color);
+            // Quadrat unten links
+            let sq_c = c + Vec2::new(-q * 1.3, q * 1.3);
+            let sq_size = min_edge * 0.18;
+            p.rect_stroke(Rect::from_center_size(sq_c, Vec2::splat(sq_size)), 1.0, s);
+            
+            // Das kleine Plus im Quadrat wird ebenfalls dynamisch gezeichnet
+            let cross = sq_size * 0.3;
+            p.line_segment([sq_c + Vec2::new(0.0, -cross), sq_c + Vec2::new(0.0, cross)], Stroke::new(1.0, color));
+            p.line_segment([sq_c + Vec2::new(-cross, 0.0), sq_c + Vec2::new(cross, 0.0)], Stroke::new(1.0, color));
+        }
+
         CalcToken::TriangleRight => {
             let points = vec![c - Vec2::new(q, q), c - Vec2::new(q, -q), c + Vec2::new(q, 0.0)];
             p.add(egui::Shape::closed_line(points, s));
@@ -549,7 +589,8 @@ fn paint_token(_ui: &egui::Ui, p: &egui::Painter, rect: Rect, token: CalcToken, 
                 CalcToken::MPlus => "M+",
                 _ => ""
             };
-            p.text(c, Align2::CENTER_CENTER, text, FontId::monospace(18.0), color);
+            // Auch die anderen Texte (wie "sin", "cos") passen sich jetzt an den Button an
+            p.text(c, Align2::CENTER_CENTER, text, FontId::monospace(min_edge * 0.35), color);
         }
     }
 }

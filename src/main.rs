@@ -3,6 +3,8 @@ mod logic;
 use eframe::egui;
 use egui::{Color32, Stroke, Vec2, Rect, Pos2, Align2, FontId};
 use logic::{DozenalDigit, DozenalConverter};
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
 
 #[derive(Clone, Copy, PartialEq)]
 enum CalcToken {
@@ -15,13 +17,39 @@ enum CalcToken {
     AC, Del, MPlus, Decimal, Equals,
 }
 
+// 1. Die Tür für den Desktop (Native)
+#[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result<()> {
-    let native_options = eframe::NativeOptions::default();
+    let native_options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([400.0, 600.0]),
+        ..Default::default()
+    };
     eframe::run_native(
         "Scientific Dozenal Calculator",
         native_options,
         Box::new(|_cc| Box::new(DozenalCalcApp::default())),
     )
+}
+
+// 2. Die Tür für den Browser (WebAssembly)
+#[cfg(target_arch = "wasm32")]
+fn main() {
+    // Leitet Fehler in die Entwickler-Konsole des Browsers (F12) um
+    eframe::WebLogger::init(log::LevelFilter::Debug).ok();
+
+    let web_options = eframe::WebOptions::default();
+
+    wasm_bindgen_futures::spawn_local(async {
+        eframe::WebRunner::new()
+            .start(
+                "the_canvas_id", // Diese ID muss in deiner index.html stehen
+                web_options,
+                Box::new(|_cc| Box::new(DozenalCalcApp::default())),
+            )
+            .await
+            .expect("failed to start eframe");
+    });
 }
 
 struct DozenalCalcApp {

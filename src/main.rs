@@ -326,9 +326,8 @@ impl DozenalCalcApp {
         // Wir fragen: Wie viel Platz ist nach unten noch frei?
         let remaining_h = ui.available_height();
         
-        // Wir ziehen ca. 120 Pixel pauschal für unsere Separatoren und Abstände ab.
-        // Der Rest wird auf die 10 Tastenreihen verteilt.
-        let btn_height = ((remaining_h - 120.0) / 10.0).clamp(30.0, 65.0); 
+        // Wir ziehen jetzt 150 statt 120 Pixel ab, um unten mehr Platz für die Browserleiste zu lassen.
+        let btn_height = ((remaining_h - 150.0) / 10.0).clamp(30.0, 65.0);
 
         // Breite berechnen
         let num_btn_width = (ui.available_width() - (2.0 * spacing)) / 3.0;

@@ -317,19 +317,27 @@ impl DozenalCalcApp {
         if resp.clicked() { self.handle_click(CalcToken::Equals); }
     }
 
-// --- HANDY LAYOUT (Symmetrisch angepasst) ---
+// --- HANDY LAYOUT (Voll Responsive in Breite UND Höhe) ---
     fn draw_mobile_layout(&mut self, ui: &mut egui::Ui) {
         let spacing = 8.0;
+        let num_spacing_y = 12.0; // Leicht reduzierter Abstand, damit alles sicher passt
+
+        // --- DIE NEUE DYNAMISCHE HÖHE ---
+        // Wir fragen: Wie viel Platz ist nach unten noch frei?
+        let remaining_h = ui.available_height();
         
-        // Berechnung für den gedrittelten Zahlenblock (3 Spalten)
+        // Wir ziehen ca. 120 Pixel pauschal für unsere Separatoren und Abstände ab.
+        // Der Rest wird auf die 10 Tastenreihen verteilt.
+        let btn_height = ((remaining_h - 120.0) / 10.0).clamp(30.0, 65.0); 
+
+        // Breite berechnen
         let num_btn_width = (ui.available_width() - (2.0 * spacing)) / 3.0;
-        let num_btn_size = Vec2::new(num_btn_width, 45.0);
+        let num_btn_size = Vec2::new(num_btn_width, btn_height);
 
-        // Berechnung für den geviertelten Operationsblock (4 Spalten)
         let ops_btn_width = (ui.available_width() - (3.0 * spacing)) / 4.0;
-        let ops_btn_size = Vec2::new(ops_btn_width, 45.0);
+        let ops_btn_size = Vec2::new(ops_btn_width, btn_height);
 
-        // 1. Hilfsarbeiter für die Operationstasten (4 Spalten)
+        // 1. Hilfsarbeiter (verwenden jetzt die dynamische btn_height)
         let render_btn = |app: &mut Self, ui: &mut egui::Ui, token: CalcToken, color_normal: Color32| {
             let (rect, resp) = ui.allocate_at_least(ops_btn_size, egui::Sense::click());
             let color = if resp.is_pointer_button_down_on() { Color32::LIGHT_RED } else { color_normal };
@@ -337,7 +345,7 @@ impl DozenalCalcApp {
             if resp.clicked() { app.handle_click(token); }
         };
 
-        // 2. Hilfsarbeiter für die Dozenal-Ziffern (3 Spalten)
+        // 2. Hilfsarbeiter
         let render_digit = |app: &mut Self, ui: &mut egui::Ui, digit: DozenalDigit| {
             let (rect, resp) = ui.allocate_at_least(num_btn_size, egui::Sense::click());
             let color = if resp.is_pointer_button_down_on() { Color32::GOLD } else { Color32::WHITE };
@@ -345,7 +353,7 @@ impl DozenalCalcApp {
             if resp.clicked() { app.handle_click(CalcToken::Digit(digit)); }
         };
 
-        // --- ZAHLENBLOCK OBEN (Gedrittelt) ---
+        // --- ZAHLENBLOCK OBEN ---
         let num_layout = [
             [DozenalDigit::D10, DozenalDigit::D11, DozenalDigit::D0],
             [DozenalDigit::D7,  DozenalDigit::D8,  DozenalDigit::D9],
@@ -353,7 +361,7 @@ impl DozenalCalcApp {
             [DozenalDigit::D1,  DozenalDigit::D2,  DozenalDigit::D3],
         ];
         
-        egui::Grid::new("mob_numpad").spacing([spacing, 20.0]).show(ui, |ui| {
+        egui::Grid::new("mob_numpad").spacing([spacing, num_spacing_y]).show(ui, |ui| {
             for row in &num_layout {
                 for &digit in row {
                     render_digit(self, ui, digit);
@@ -362,38 +370,34 @@ impl DozenalCalcApp {
             }
         });
 
-        ui.add_space(15.0);
+        ui.add_space(10.0);
         ui.separator();
-        ui.add_space(15.0);
+        ui.add_space(10.0);
 
-        // --- OPERATIONEN (Geviertelt) ---
+        // --- OPERATIONEN ---
         egui::Grid::new("mob_ops_vertical").spacing([spacing, spacing]).show(ui, |ui| {
             let c = Color32::LIGHT_BLUE;
-            
             // Zeile 1
             render_btn(self, ui, CalcToken::Add, c);           render_btn(self, ui, CalcToken::OplusBotLeft, c);  
             render_btn(self, ui, CalcToken::Sin, c);           render_btn(self, ui, CalcToken::ParenOpen, c);     
             ui.end_row();
-
             // Zeile 2
             render_btn(self, ui, CalcToken::Sub, c);           render_btn(self, ui, CalcToken::ExpTopRight, c);   
             render_btn(self, ui, CalcToken::Cos, c);           render_btn(self, ui, CalcToken::ParenClose, c);    
             ui.end_row();
-
             // Zeile 3
             render_btn(self, ui, CalcToken::Mul, c);           render_btn(self, ui, CalcToken::RootTopLeft, c);   
             render_btn(self, ui, CalcToken::Tan, c);           render_btn(self, ui, CalcToken::TriangleLeft, c);  
             ui.end_row();
-
             // Zeile 4
             render_btn(self, ui, CalcToken::Div, c);           render_btn(self, ui, CalcToken::LogBotRight, c);   
             render_btn(self, ui, CalcToken::Cot, c);           render_btn(self, ui, CalcToken::TriangleRight, c); 
             ui.end_row();
         });
 
-        ui.add_space(20.0); 
+        ui.add_space(10.0); 
 
-        // --- SYSTEMTASTEN (Geviertelt) ---
+        // --- SYSTEMTASTEN ---
         egui::Grid::new("mob_sys").spacing([spacing, spacing]).show(ui, |ui| {
             let c = Color32::LIGHT_BLUE;
             render_btn(self, ui, CalcToken::AC, c); 
@@ -406,7 +410,8 @@ impl DozenalCalcApp {
         ui.add_space(10.0);
 
         // --- BREITE GLEICHHEITSTASTE ---
-        let equals_size = Vec2::new(ui.available_width(), 60.0);
+        // Das Gleichheitszeichen darf ein kleines bisschen höher sein (Faktor 1.2)
+        let equals_size = Vec2::new(ui.available_width(), btn_height * 1.2);
         let (rect, resp) = ui.allocate_at_least(equals_size, egui::Sense::click());
         let color = if resp.is_pointer_button_down_on() { Color32::LIGHT_RED } else { Color32::LIGHT_GREEN };
         paint_token(ui, ui.painter(), rect, CalcToken::Equals, color, 2.0);

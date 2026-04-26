@@ -110,6 +110,10 @@ fn main() {
 struct DozenalCalcApp {
     input_buffer: Vec<CalcToken>,
     result_buffer: Vec<CalcToken>,
+    // Period metadata — parallel to result_buffer; None when no period or f64 fallback.
+    result_period_start: Option<usize>, // index in result_buffer where the period begins
+    result_period_len: usize,           // digits in period, capped at 5 for display
+    result_period_capped: bool,         // true when the true period exceeds 5 digits
     cursor_pos: usize,
     memory: Vec<CalcToken>,
     last_ans: Option<Rational>,
@@ -122,6 +126,9 @@ impl Default for DozenalCalcApp {
         Self {
             input_buffer: Vec::new(),
             result_buffer: vec![CalcToken::Digit(DozenalDigit::D0)],
+            result_period_start: None,
+            result_period_len: 0,
+            result_period_capped: false,
             cursor_pos: 0,
             memory: Vec::new(),
             last_ans: None,
@@ -248,6 +255,9 @@ impl DozenalCalcApp {
             CalcToken::AC => {
                 self.input_buffer.clear();
                 self.result_buffer = vec![CalcToken::Digit(DozenalDigit::D0)];
+                self.result_period_start = None;
+                self.result_period_len = 0;
+                self.result_period_capped = false;
                 self.cursor_pos = 0;
                 self.error_msg = None;
             }
@@ -558,31 +568,60 @@ impl DozenalCalcApp {
         match meval::eval_str_with_context(&math_string, (ctx, meval::builtin())) {
             Ok(result) if result.is_finite() => {
                 self.error_msg = None;
-                self.last_ans = rat_result; // store exact result when available
+                self.last_ans = rat_result;
 
-                let mut new_result = Vec::new();
-                let mut val = result;
-                if val < 0.0 {
-                    new_result.push(CalcToken::Negate);
-                    val = val.abs();
-                }
-
-                new_result.extend(
-                    DozenalConverter::from_decimal(val)
-                        .into_iter()
-                        .map(CalcToken::Digit),
-                );
-
-                let frac_part = val - val.floor();
-                if frac_part > 0.000001 {
-                    new_result.push(CalcToken::Decimal);
-                    new_result.extend(
-                        DozenalConverter::frac_to_digits(frac_part, 4)
+                if let Some(r) = rat_result {
+                    // --- Rational track: exact display with possible overline ---
+                    let (int_d, pre_d, period_d) = r.to_dozenal_periodic();
+                    let mut buf: Vec<CalcToken> = Vec::new();
+                    if r.num < 0 {
+                        buf.push(CalcToken::Negate);
+                    }
+                    buf.extend(int_d.into_iter().map(CalcToken::Digit));
+                    if !pre_d.is_empty() || !period_d.is_empty() {
+                        buf.push(CalcToken::Decimal);
+                    }
+                    buf.extend(pre_d.into_iter().map(CalcToken::Digit));
+                    let period_start = if period_d.is_empty() {
+                        None
+                    } else {
+                        Some(buf.len())
+                    };
+                    let period_capped = period_d.len() > 5;
+                    let period_len = period_d.len().min(5);
+                    buf.extend(period_d.into_iter().take(5).map(CalcToken::Digit));
+                    self.result_buffer = buf;
+                    self.result_period_start = period_start;
+                    self.result_period_len = period_len;
+                    self.result_period_capped = period_capped;
+                } else {
+                    // --- f64 fallback: 4 fractional dozenal digits, no overline ---
+                    let mut buf: Vec<CalcToken> = Vec::new();
+                    let mut val = result;
+                    if val < 0.0 {
+                        buf.push(CalcToken::Negate);
+                        val = val.abs();
+                    }
+                    buf.extend(
+                        DozenalConverter::from_decimal(val)
                             .into_iter()
                             .map(CalcToken::Digit),
                     );
+                    let frac_part = val - val.floor();
+                    if frac_part > 0.000001 {
+                        buf.push(CalcToken::Decimal);
+                        buf.extend(
+                            DozenalConverter::frac_to_digits(frac_part, 4)
+                                .into_iter()
+                                .map(CalcToken::Digit),
+                        );
+                    }
+                    self.result_buffer = buf;
+                    self.result_period_start = None;
+                    self.result_period_len = 0;
+                    self.result_period_capped = false;
                 }
-                self.result_buffer = new_result;
+
                 self.input_buffer.clear();
                 self.cursor_pos = 0;
             }
@@ -923,12 +962,46 @@ impl eframe::App for DozenalCalcApp {
                 }
 
                 if self.input_buffer.is_empty() {
-                    let mut x_pos = display_rect.right() - 40.0;
-                    for token in self.result_buffer.iter().rev() {
-                        let rect = Rect::from_center_size(
-                            Pos2::new(x_pos, display_rect.center().y),
-                            Vec2::splat(40.0),
-                        );
+                    let n = self.result_buffer.len();
+                    // Pre-compute x positions (right-aligned, mirrors the original right-to-left layout)
+                    let mut positions = vec![Pos2::ZERO; n];
+                    {
+                        let mut x = display_rect.right() - 40.0;
+                        for i in (0..n).rev() {
+                            positions[i] = Pos2::new(x, display_rect.center().y);
+                            x -= match self.result_buffer[i] {
+                                CalcToken::Decimal => 25.0,
+                                _ => 50.0,
+                            };
+                        }
+                    }
+                    // Draw overline above period digits (before tokens so digits render on top)
+                    if let Some(ps) = self.result_period_start
+                        .filter(|&ps| self.result_period_len > 0 && ps < n)
+                    {
+                        {
+                            let last = (ps + self.result_period_len - 1).min(n - 1);
+                            let ox_start = positions[ps].x - 20.0;
+                            let ox_end = positions[last].x + 20.0;
+                            let oy = display_rect.center().y - 23.0;
+                            ui.painter().line_segment(
+                                [Pos2::new(ox_start, oy), Pos2::new(ox_end, oy)],
+                                Stroke::new(1.5, Color32::WHITE),
+                            );
+                            if self.result_period_capped {
+                                ui.painter().text(
+                                    Pos2::new(ox_end + 3.0, display_rect.center().y),
+                                    Align2::LEFT_CENTER,
+                                    "…",
+                                    FontId::monospace(16.0),
+                                    Color32::WHITE,
+                                );
+                            }
+                        }
+                    }
+                    // Draw tokens
+                    for (idx, token) in self.result_buffer.iter().enumerate() {
+                        let rect = Rect::from_center_size(positions[idx], Vec2::splat(40.0));
                         match token {
                             CalcToken::Digit(d) => {
                                 paint_dozenal_digit(ui, ui.painter(), rect, *d, Color32::WHITE, 2.5)
@@ -948,10 +1021,6 @@ impl eframe::App for DozenalCalcApp {
                             }
                             _ => {}
                         }
-                        x_pos -= match token {
-                            CalcToken::Decimal => 25.0,
-                            _ => 50.0,
-                        };
                     }
                 } else {
                     let mut x_pos = display_rect.left() + 30.0;

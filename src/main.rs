@@ -166,6 +166,8 @@ struct DozenalCalcApp {
     memory_rational: Option<Rational>, // exact value for STO/RCL roundtrip
     last_ans: Option<Rational>,
     last_result_f64: f64, // kept for decimal display mode
+    result_cursor_pos: usize,
+    result_field_active: bool, // true after = until next input modifies input_buffer
     error_msg: Option<String>,
     overlay_open: bool,
     angle_mode: AngleMode,
@@ -186,6 +188,8 @@ impl Default for DozenalCalcApp {
             memory_rational: None,
             last_ans: None,
             last_result_f64: 0.0,
+            result_cursor_pos: 0,
+            result_field_active: false,
             error_msg: None,
             overlay_open: false,
             angle_mode: AngleMode::Rad,
@@ -323,6 +327,34 @@ impl DozenalCalcApp {
         if self.error_msg.is_some() && token != CalcToken::AC {
             return;
         }
+        // Ans auto-insertion: if we just evaluated (result_field_active) and the user
+        // presses an operator as the first token of a new expression, prepend Ans.
+        let is_operator = matches!(
+            token,
+            CalcToken::Add
+                | CalcToken::Sub
+                | CalcToken::Mul
+                | CalcToken::Div
+                | CalcToken::ExpTopRight
+                | CalcToken::RootTopLeft
+                | CalcToken::OplusBotLeft
+                | CalcToken::LogBotRight
+        );
+        if self.result_field_active && is_operator && self.input_buffer.is_empty() {
+            if let Some(r) = self.last_ans {
+                self.input_buffer.push(CalcToken::RatLit(r));
+            } else {
+                for &t in &self.result_buffer.clone() {
+                    self.input_buffer.push(t);
+                }
+            }
+            self.cursor_pos = self.input_buffer.len();
+        }
+
+        // Any action other than arrows switches activity back to the input field.
+        if !matches!(token, CalcToken::TriangleLeft | CalcToken::TriangleRight) {
+            self.result_field_active = false;
+        }
         match token {
             CalcToken::Digit(digit) => {
                 self.input_buffer
@@ -346,12 +378,20 @@ impl DozenalCalcApp {
                 }
             }
             CalcToken::TriangleLeft => {
-                if self.cursor_pos > 0 {
+                if self.result_field_active {
+                    if self.result_cursor_pos > 0 {
+                        self.result_cursor_pos -= 1;
+                    }
+                } else if self.cursor_pos > 0 {
                     self.cursor_pos -= 1;
                 }
             }
             CalcToken::TriangleRight => {
-                if self.cursor_pos < self.input_buffer.len() {
+                if self.result_field_active {
+                    if self.result_cursor_pos < self.result_buffer.len() {
+                        self.result_cursor_pos += 1;
+                    }
+                } else if self.cursor_pos < self.input_buffer.len() {
                     self.cursor_pos += 1;
                 }
             }
@@ -487,6 +527,34 @@ impl DozenalCalcApp {
                 }
             }
         }
+    }
+
+    /// Returns true when the token just before `cursor_pos` is the same function —
+    /// meaning a second click would toggle to its inverse. Used for the armed marker.
+    fn is_armed(&self, token: CalcToken) -> bool {
+        let invertible = matches!(
+            token,
+            CalcToken::Sin
+                | CalcToken::Cos
+                | CalcToken::Tan
+                | CalcToken::Cot
+                | CalcToken::ArcSin
+                | CalcToken::ArcCos
+                | CalcToken::ArcTan
+                | CalcToken::ArcCot
+                | CalcToken::Sinh
+                | CalcToken::Cosh
+                | CalcToken::Tanh
+                | CalcToken::Coth
+                | CalcToken::ArSinh
+                | CalcToken::ArCosh
+                | CalcToken::ArTanh
+                | CalcToken::ArCoth
+        );
+        if !invertible || self.cursor_pos == 0 {
+            return false;
+        }
+        self.input_buffer[self.cursor_pos - 1] == token
     }
 
     // --- RECHEN-LOGIK ---
@@ -731,6 +799,8 @@ impl DozenalCalcApp {
 
                 self.input_buffer.clear();
                 self.cursor_pos = 0;
+                self.result_cursor_pos = 0;
+                self.result_field_active = true;
             }
             Ok(result) if result.is_nan() => {
                 // NaN comes from out-of-domain inputs (e.g. arcosh(0), artanh(1))
@@ -794,6 +864,13 @@ impl DozenalCalcApp {
                             Color32::LIGHT_BLUE
                         };
                         paint_token(ui, ui.painter(), rect, token, color, 2.0);
+                        if self.is_armed(token) {
+                            ui.painter().circle_filled(
+                                rect.right_top() + Vec2::new(-5.0, 5.0),
+                                3.0,
+                                Color32::GOLD,
+                            );
+                        }
                         if resp.clicked() {
                             self.handle_click(token);
                         }
@@ -880,6 +957,13 @@ impl DozenalCalcApp {
                     color_normal
                 };
                 paint_token(ui, ui.painter(), rect, token, color, 2.0);
+                if app.is_armed(token) {
+                    ui.painter().circle_filled(
+                        rect.right_top() + Vec2::new(-5.0, 5.0),
+                        3.0,
+                        Color32::GOLD,
+                    );
+                }
                 if resp.clicked() {
                     app.handle_click(token);
                 }
@@ -1040,6 +1124,13 @@ impl DozenalCalcApp {
                     Color32::LIGHT_BLUE
                 };
                 paint_token(ui, ui.painter(), rect, token, color, 2.0);
+                if self.is_armed(token) {
+                    ui.painter().circle_filled(
+                        rect.right_top() + Vec2::new(-5.0, 5.0),
+                        3.0,
+                        Color32::GOLD,
+                    );
+                }
                 if resp.clicked() {
                     self.handle_click(token);
                 }
@@ -1144,6 +1235,18 @@ impl eframe::App for DozenalCalcApp {
                                     );
                                 }
                             }
+                        }
+                        // Draw result cursor when result field is active
+                        if self.result_field_active && n > 0 {
+                            let rcp = self.result_cursor_pos.min(n - 1);
+                            let cx = positions[rcp].x - 20.0;
+                            ui.painter().line_segment(
+                                [
+                                    Pos2::new(cx, display_rect.center().y - 15.0),
+                                    Pos2::new(cx, display_rect.center().y + 15.0),
+                                ],
+                                Stroke::new(2.0, Color32::RED),
+                            );
                         }
                         // Draw tokens
                         for (idx, token) in self.result_buffer.iter().enumerate() {

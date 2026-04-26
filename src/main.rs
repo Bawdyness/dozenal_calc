@@ -1067,12 +1067,11 @@ impl DozenalCalcApp {
         }
     }
 
-    fn draw_overlay(&mut self, ui: &mut egui::Ui, keypad_rect: Rect) {
+    fn draw_overlay(&mut self, ui: &mut egui::Ui, keypad_rect: Rect, is_mobile: bool) {
         // Dim the main keypad
         ui.painter()
             .rect_filled(keypad_rect, 0.0, Color32::from_black_alpha(180));
 
-        // Place the overlay in the same rect as the main keypad
         let sets: [[CalcToken; 4]; 5] = [
             [
                 CalcToken::Sto,
@@ -1106,35 +1105,61 @@ impl DozenalCalcApp {
             ],
         ];
 
-        let n_cols = 4usize;
-        let n_rows = 5usize;
         let spacing = 6.0;
-        let btn_w = (keypad_rect.width() - spacing * (n_cols as f32 - 1.0)) / n_cols as f32;
-        let btn_h = (keypad_rect.height() - spacing * (n_rows as f32 - 1.0)) / n_rows as f32;
 
-        for (row_idx, row) in sets.iter().enumerate() {
-            for (col_idx, &token) in row.iter().enumerate() {
-                let x = keypad_rect.left() + col_idx as f32 * (btn_w + spacing);
-                let y = keypad_rect.top() + row_idx as f32 * (btn_h + spacing);
-                let rect = Rect::from_min_size(Pos2::new(x, y), Vec2::new(btn_w, btn_h));
-                let resp = ui.allocate_rect(rect, egui::Sense::click());
-                let color = if resp.is_pointer_button_down_on() {
-                    Color32::LIGHT_RED
-                } else {
-                    Color32::LIGHT_BLUE
-                };
-                paint_token(ui, ui.painter(), rect, token, color, 2.0);
-                if self.is_armed(token) {
-                    ui.painter().circle_filled(
-                        rect.right_top() + Vec2::new(-5.0, 5.0),
-                        3.0,
-                        Color32::GOLD,
-                    );
-                }
-                if resp.clicked() {
-                    self.handle_click(token);
+        if is_mobile {
+            // Sets 6-9: 4 columns × 4 rows (mirrors the 4-column ops grid in mobile main layout)
+            // Set 10: single row below, like Set 5 in the mobile main layout
+            let btn_w = (keypad_rect.width() - spacing * 3.0) / 4.0;
+            let extra_gap = spacing * 2.0; // extra visual separation before set-10 row
+            // 5 button rows total: 4 for the main grid + 1 for set 10
+            let btn_h = (keypad_rect.height() - spacing * 4.0 - extra_gap) / 5.0;
+
+            for (col_idx, set) in sets[..4].iter().enumerate() {
+                for (row_idx, &token) in set.iter().enumerate() {
+                    let x = keypad_rect.left() + col_idx as f32 * (btn_w + spacing);
+                    let y = keypad_rect.top() + row_idx as f32 * (btn_h + spacing);
+                    let rect = Rect::from_min_size(Pos2::new(x, y), Vec2::new(btn_w, btn_h));
+                    self.paint_overlay_btn(ui, rect, token);
                 }
             }
+            let y10 = keypad_rect.top() + 4.0 * (btn_h + spacing) + extra_gap;
+            for (col_idx, &token) in sets[4].iter().enumerate() {
+                let x = keypad_rect.left() + col_idx as f32 * (btn_w + spacing);
+                let rect = Rect::from_min_size(Pos2::new(x, y10), Vec2::new(btn_w, btn_h));
+                self.paint_overlay_btn(ui, rect, token);
+            }
+        } else {
+            // Desktop: 5 columns × 4 rows — mirrors Sets 1–5 on desktop
+            let btn_w = (keypad_rect.width() - spacing * 4.0) / 5.0;
+            let btn_h = (keypad_rect.height() - spacing * 3.0) / 4.0;
+
+            for (col_idx, set) in sets.iter().enumerate() {
+                for (row_idx, &token) in set.iter().enumerate() {
+                    let x = keypad_rect.left() + col_idx as f32 * (btn_w + spacing);
+                    let y = keypad_rect.top() + row_idx as f32 * (btn_h + spacing);
+                    let rect = Rect::from_min_size(Pos2::new(x, y), Vec2::new(btn_w, btn_h));
+                    self.paint_overlay_btn(ui, rect, token);
+                }
+            }
+        }
+    }
+
+    /// Renders a single overlay button (shared between desktop and mobile overlay).
+    fn paint_overlay_btn(&mut self, ui: &mut egui::Ui, rect: Rect, token: CalcToken) {
+        let resp = ui.allocate_rect(rect, egui::Sense::click());
+        let color = if resp.is_pointer_button_down_on() {
+            Color32::LIGHT_RED
+        } else {
+            Color32::LIGHT_BLUE
+        };
+        paint_token(ui, ui.painter(), rect, token, color, 2.0);
+        if self.is_armed(token) {
+            ui.painter()
+                .circle_filled(rect.right_top() + Vec2::new(-5.0, 5.0), 3.0, Color32::GOLD);
+        }
+        if resp.clicked() {
+            self.handle_click(token);
         }
     }
 }
@@ -1410,7 +1435,7 @@ impl eframe::App for DozenalCalcApp {
                         Pos2::new(ui.min_rect().left(), keypad_top),
                         ui.min_rect().right_bottom(),
                     );
-                    self.draw_overlay(ui, keypad_rect);
+                    self.draw_overlay(ui, keypad_rect, is_mobile);
                 }
             });
         });

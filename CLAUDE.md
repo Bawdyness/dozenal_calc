@@ -138,7 +138,14 @@ Plus the full-width `=` key at the very bottom (not part of any set).
 
 ### Expansion overlay (Sets 6–10)
 
-The overlay opens when `Expand` (5.4) is pressed. It uses the same 5-set grid structure as the main keypad. Close lives in position 10.4 — there is no separate full-width bar in the overlay.
+The overlay opens when `Expand` (5.4) is pressed. It uses **exactly the same spatial arrangement as the main keypad** — not just the same key count, but the same layout logic per platform:
+
+- **Desktop overlay**: Sets 6–10 arranged vertically side by side, exactly as Sets 1–5 are on desktop.
+- **Mobile overlay**: Sets 6–9 arranged vertically side by side, Set 10 sitting horizontally below them with the same spacing used for Set 5 in the mobile main keypad.
+
+This is a hard requirement. The overlay must be a visual mirror of the main keypad at all times — same proportions, same axis, same breakpoint behavior. Any implementation that arranges overlay sets differently from main keypad sets (e.g. all-horizontal on desktop, or all-horizontal on mobile) is incorrect.
+
+Close lives in position 10.4 — there is no separate full-width bar in the overlay.
 
 | Set | Position 1 | Position 2 | Position 3 | Position 4 |
 |---|---|---|---|---|

@@ -152,7 +152,7 @@ When a decision is finalized in chat, it should be moved into `CLAUDE.md` and re
 
 The user has chosen "all together at the end" rather than incremental fixes. Now that the overlay design and the periodic-decimal feature are finalized, the implementation order is:
 
-1. **Overlay infrastructure**: replace `MPlus` token with `Expand`, add `overlay_open` state, add `Close` token, add overlay drawing routine that mirrors the 5-set layout with Sets 6–10 and dims the main keypad.
+1. **Overlay infrastructure**: replace `MPlus` token with `Expand`, add `overlay_open` state, add `Close` token, add overlay drawing routine that mirrors the 5-set layout with Sets 6–10 and dims the main keypad. **Known bug to fix here**: the current overlay implementation arranges sets horizontally on both desktop and mobile. The correct behavior is identical to the main keypad — sets vertical on desktop, sets 6–9 vertical + set 10 horizontal below on mobile. See `CLAUDE.md` "Expansion overlay" for the precise requirement.
 2. **`Rational` type and rational arithmetic** in `logic.rs`. Unit tests for finite vs. periodic detection, overflow handling, divide-by-zero.
 3. **Period detection algorithm** in `logic.rs`. Unit tests with the periodic fractions from the curiosities list.
 4. **Parallel evaluation track** in `calculate_result()`: alongside the existing meval call, walk the `input_buffer` with the rational evaluator. Store both results.

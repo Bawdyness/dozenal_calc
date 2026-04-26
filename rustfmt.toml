@@ -1,0 +1,28 @@
+# rustfmt.toml — configuration for cargo fmt
+#
+# Keeps formatting consistent across the project regardless of who (or what) writes the code.
+# Run `cargo fmt --all` before every commit. Claude Code does this automatically per CLAUDE.md.
+
+# Line length. Default is 100. We keep it; egui code often has long chained calls.
+max_width = 100
+
+# Use 4 spaces for indentation (Rust standard, no need to override).
+# tab_spaces = 4
+
+# Standard Rust style edition.
+edition = "2021"
+
+# Reorder imports alphabetically within groups (std, external crates, local modules).
+reorder_imports = true
+
+# Group `use` statements by source.
+group_imports = "StdExternalCrate"
+
+# Use field init shorthand: `Foo { x }` instead of `Foo { x: x }`.
+use_field_init_shorthand = true
+
+# Trailing commas in multi-line constructs (helps git diffs).
+trailing_comma = "Vertical"
+
+# Format string literals (wraps long strings nicely).
+format_strings = false  # leave strings alone — UI text shouldn't be auto-broken

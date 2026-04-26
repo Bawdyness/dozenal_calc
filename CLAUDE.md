@@ -8,8 +8,17 @@ Dozenal Calculator — a scientific calculator that natively computes in base 12
 
 Key design philosophy:
 - **Progressive disclosure**: rare/advanced functions live behind an expansion overlay, not on the main keypad.
-- **Symmetry and rhythm**: the layout uses 5 sets of 4 keys each, plus a full-width key at the bottom. The expansion overlay mirrors this exact structure.
+- **Symmetry and rhythm**: the layout uses 5 sets of 4 keys each (Sets 1–5), plus a full-width `=` key at the bottom. The expansion overlay mirrors this exact structure with Sets 6–10.
 - **No CAS bloat**: this is not a TI-Nspire competitor. Statistics, complex numbers, programming, and unit conversions are explicit non-goals for v1.
+
+## Layout Invariants
+
+These are hard structural rules. They define the project's visual identity and are not subject to incremental drift.
+
+- **Sets are strictly 4-key groups.** Always. No 3-key sets, no 5-key sets, no exceptions.
+- **The `=` bar at the bottom of the main keypad is a standalone component, not part of any set.** It does not count toward Set 5.
+- **The overlay has no separate full-width bottom bar.** Close lives in position 10.4. The visual symmetry to the `=` bar is intentionally broken: the overlay is a *selection* mode, not a *trigger* mode, and a vollwidth bar would imply a primary action it doesn't have.
+- **Overlay depth is exactly one level.** There is the main keypad and exactly one expansion overlay. A second overlay (nested overlays with further sets) is explicitly not a design goal and will not be implemented. Content that would need more space is either dropped or moved to other expression forms (info modal, README, tooltips). This boundary is constitutive for the minimalist character of the project.
 
 ## Commands
 
@@ -42,17 +51,19 @@ Two source files, two build targets (native desktop + WebAssembly via Trunk).
 **`src/logic.rs`** — pure data layer:
 - `DozenalDigit` enum: D0–D11 representing base-12 digits
 - `DozenalConverter`: converts between `Vec<DozenalDigit>` and `f64` (`to_decimal` / `from_decimal`)
+- `Rational`: exact rational arithmetic for the periodic-decimal track (see "Periodic Decimals" below)
 
 **`src/main.rs`** — everything else:
-- `CalcToken` enum: all possible button types (digits, arithmetic, trig, specials like `MPlus`, `TriangleLeft/Right`)
-- `DozenalCalcApp` struct: holds `input_buffer: Vec<CalcToken>`, `result_buffer: Vec<CalcToken>`, `cursor_pos`, `memory`, `error_msg`
-- `handle_click()`: routes button presses; double-clicking a trig function toggles it to its arc-inverse (sin→asin, etc.)
-- `calculate_result()`: walks `input_buffer`, converts dozenal digits to decimal values, assembles a string for `meval::eval_str`, converts the `f64` result back into dozenal tokens
+- `CalcToken` enum: all possible button types (digits, arithmetic, trig, specials like `Expand`, `TriangleLeft/Right`, `Negate`)
+- `DozenalCalcApp` struct: holds `input_buffer: Vec<CalcToken>`, `result_buffer: Vec<CalcToken>`, `cursor_pos`, `result_cursor_pos`, `memory`, `last_ans: Option<Rational>`, `error_msg`, `overlay_open: bool`, `angle_mode: AngleMode`, `display_base: DisplayBase`
+- `handle_click()`: routes button presses; double-clicking a function key toggles it to its inverse where applicable
+- `calculate_result()`: runs two parallel evaluation tracks — the f64 track via `meval` and the rational track via `Rational` arithmetic
 - `draw_desktop_layout()` / `draw_mobile_layout()`: two separate egui layouts, switched at 500 px width in the `update()` loop
-- `paint_dozenal_digit()`: custom vector drawing for each digit — D0 is a circle, D1/4/7/10 are directional arrows (anchor points), D2–D11 are arc combinations
+- `draw_overlay()`: renders the expansion overlay over the dimmed main keypad
+- `paint_dozenal_digit()`: custom vector drawing for each digit
 - `paint_token()`: draws all non-digit buttons as geometric shapes or text
 
-**Calculation pipeline**: `input_buffer` → string expression (dozenal→decimal, special operators expanded inline) → `meval` → `f64` → dozenal `result_buffer`. The `⊕` operator expands to `(a*b)/(a+b)`. Root `√` and `log` operators are positional (left operand is base/degree, right is argument).
+**Calculation pipeline**: `input_buffer` → (a) string expression for `meval` → `f64` → dozenal `result_buffer`; in parallel (b) `Rational` evaluation → `Option<Rational>`. If (b) succeeds, the display shows the periodic representation with overline; otherwise the f64 result is shown with 4 dozenal fractional digits.
 
 **Web entry point**: `index.html` uses Trunk's `<link data-trunk rel="rust">` directive; canvas id `the_canvas_id` must match the string in `main()`.
 
@@ -64,85 +75,154 @@ Two source files, two build targets (native desktop + WebAssembly via Trunk).
 
 **`cot`** and **`acot`** are registered as custom functions via `meval::Context` in `calculate_result()`. They are not meval builtins. The tuple `(ctx, meval::builtin())` merges the custom context with all standard meval functions and constants (`sin`, `cos`, `pi`, etc.).
 
+**Hyperbolic inverses (`arsinh`, `arcosh`, `artanh`, `arcoth`)**: standard principal-value definitions. `arcoth(x) = (1/2) * ln((x+1)/(x-1))` defined for `|x| > 1`; outside this range the f64 track produces NaN and the result is shown as an error.
+
+## Periodic Decimals
+
+The calculator displays periodic dozenal expansions with an overline (Periodenstrich) over the repeating digits. This is a defining didactic feature: in base 12, fractions like `1/5`, `1/7`, `1/B` reveal periodic structures that are different from base 10 and worth showing visibly.
+
+**Parallel evaluation**: On `=`, the `input_buffer` is evaluated twice — once via `meval` to `f64` (existing path), and once via the rational track to `Option<Rational>`. If the rational track returns `Some(p/q)`, the display is generated from the exact fraction. If `None`, the f64 result is displayed with 4 dozenal fractional digits and no overline.
+
+**What stays rational**:
+- Integer dozenal literals (`5`, `B`, `100`)
+- Finite-fractional dozenal literals (`0.6` = 6/12, `1.16` = 1 + 1/12 + 6/144)
+- The four basic operations (`+`, `−`, `*`, `/`)
+- Parentheses and negation
+- Integer powers (positive or negative integer exponent)
+- The `⊕` operator on rational operands (`(a*b)/(a+b)` stays rational)
+
+**What collapses the rational track to `None`**:
+- Any transcendental function (`sin`, `cos`, `tan`, `cot`, their inverses, hyperbolics, `log`, `ln`, exponentials)
+- Irrational roots (e.g. `√2`, `√n` where n is not a perfect square)
+- The constants π, e, φ, √2 (Set 7 keys)
+- Division by zero
+- `i128` overflow in any intermediate step (use `checked_*` arithmetic throughout)
+
+**Datatype**: `Rational { num: i128, den: i128 }` defined in `logic.rs`. Always reduced via gcd, with `den > 0` enforced. All operations use `checked_add`, `checked_sub`, `checked_mul`, `checked_div`. Failure to compute (overflow, divide by zero) returns `None` and collapses the track.
+
+**Period detection**: classical school algorithm over remainders. After reducing `p/q`, the integer part is `p / q`, and the fractional part is computed by repeatedly multiplying the remainder by 12 and recording the remainders seen. Two outcomes:
+- A remainder of 0 appears → finite expansion. `period_len = 0`.
+- A remainder repeats → period found. `pre_len` and `period_len` are derived from the position of first repetition.
+
+**Display rules** (only when the rational track succeeds):
+- Finite (`period_len = 0`): standard display, no overline.
+- Period 1–5 digits: pre-period digits shown normally, the entire period rendered with an overline above all of its digits.
+- Period > 5 digits: pre-period digits shown normally, the first 5 period digits rendered with overline, followed by `…` to indicate continuation.
+- The overline never extends over pre-period digits — only over the actual repeating cycle.
+
+**Input scope**: the overline is output-only. The user has no input mechanism for typing periodic decimals (no Periodenstrich-key on either keypad).
+
+**`Ans` interaction**: when `Ans` is inserted into a new calculation (either explicitly via Set 6.4 or implicitly via auto-insertion, see "Cursor and Ans behavior"), it must carry the exact `Rational` from the previous result, not the f64 approximation. Periodicity is preserved through chained calculations as long as the rational track stays alive.
+
+**Layer separation**: `Rational` arithmetic and period detection live in `logic.rs`. The overline rendering is `main.rs`'s responsibility (extension of the result-display routine in `paint_token` or a dedicated draw function).
+
 ## Layout Architecture
 
-The keypad is built around a **5-set grid** that is preserved in both desktop and mobile modes, and mirrored in the expansion overlay.
+The keypad uses a **5-set grid** that is preserved in both desktop and mobile modes, and mirrored in the expansion overlay (Sets 6–10).
 
-### Main keypad (current)
+### Main keypad (Sets 1–5)
 
-| Set | Keys |
-|---|---|
-| 1 — Arithmetic | Add, Sub, Mul, Div |
-| 2 — Special operators | ⊕, x², √, log |
-| 3 — Trigonometry | Sin, Cos, Tan, Cot |
-| 4 — Parentheses & cursor | (, ), ◀, ▶ |
-| 5 — System | AC, Del, ., **Expand** |
+| Set | Position 1 | Position 2 | Position 3 | Position 4 |
+|---|---|---|---|---|
+| 1 — Arithmetic | Add | Sub | Mul | Div |
+| 2 — Special operators | ⊕ | x² | √ | log |
+| 3 — Trigonometry | sin | cos | tan | cot |
+| 4 — Parentheses & cursor | ( | ) | ◀ | ▶ |
+| 5 — System | AC | Del | . | Expand |
 
-Plus a full-width `=` key at the very bottom.
+Plus the full-width `=` key at the very bottom (not part of any set).
 
 **Mobile layout**: Sets 1–4 are arranged vertically side by side; Set 5 sits horizontally below them with some spacing. `=` is full-width at the bottom.
 
 **Desktop layout**: All 5 sets are arranged vertically side by side. `=` is full-width at the bottom.
 
-The `MPlus` token in the current code is to be **replaced** by an `Expand` token. M+ no longer exists as a top-level key — all memory functions live inside the expansion overlay.
+### Expansion overlay (Sets 6–10)
 
-### Expansion overlay (planned, 20 keys + close key)
+The overlay opens when `Expand` (5.4) is pressed. It uses the same 5-set grid structure as the main keypad. Close lives in position 10.4 — there is no separate full-width bar in the overlay.
 
-The overlay opens when `Expand` is pressed. It uses the **same 5-set grid structure** as the main keypad. The overlay's full-width bottom key is the **Close** key (mirrors the position of `=`).
+| Set | Position 1 | Position 2 | Position 3 | Position 4 |
+|---|---|---|---|---|
+| 6 — Memory | STO | RCL | MC | Ans |
+| 7 — Constants | π | e | φ | √2 |
+| 8 — Hyperbolic | sinh | cosh | tanh | coth |
+| 9 — Extended | n! | \|x\| | 1/x | mod |
+| 10 — Modes & Meta | Doz↔Dec | DRG | Info | Close |
 
-Set contents are still under design (see DESIGN_NOTES.md). Confirmed structural decisions:
-- Memory set: STO, RCL, MC, Ans (Memory functions follow TI-30 eco RS conventions, scaled down).
-- Other sets: under deliberation. Likely candidates include hyperbolic functions, constants, and didactic dozenal-specific tools.
+**Doppelklick-Inversen im Overlay**:
+- Set 8 (Hyperbolic): `sinh ↔ arsinh`, `cosh ↔ arcosh`, `tanh ↔ artanh`, `coth ↔ arcoth`
+- Set 9: no inverses currently — these double-click slots are intentional reserve for future expansion without changing the layout.
 
 ### Visual behavior of the overlay
 
 - **Background**: semi-transparent black (`Color32::from_black_alpha(180)` or similar) over the main keypad area. The main layout dims and remains visible for context.
 - **Overlay keys themselves**: fully opaque, sharply rendered, same look-and-feel as main keys.
-- **Click routing**: while the overlay is open, the main keypad is inactive. Only overlay keys (and the close key) respond.
+- **Click routing**: while the overlay is open, the main keypad is inactive. Only overlay keys respond.
 - **Display and input area**: remain visible and unaffected — the user can see what they're entering while choosing an overlay function.
+
+### The Info Modal (10.3)
+
+Position 10.3 opens an info modal containing didactic content about dozenality. The modal is a self-contained UI element, **not** a second overlay with keys. It contains:
+- Mathematical curiosities specific to base 12 (F(12) = 144 = 12², highly composite, abundant, short fractions)
+- Selected constants in base 12 with their first ~14 digits
+- Brief usage hints (double-click for inverses, cursor navigation)
+- A close button
+
+The modal scrolls vertically if content exceeds viewport height. It has no calculator buttons — it is a reading surface, not an interactive layer.
 
 ## Interaction Conventions
 
+### Cursor and Ans behavior
+
+The arrow keys `◀`/`▶` (positions 4.3 and 4.4) operate on the **active field**. Field activity follows the calculation lifecycle:
+
+- **Before `=`**: the input field is active. Arrows move the input cursor through `input_buffer`.
+- **After `=`**: the result field is active. Arrows move the result cursor through `result_buffer`.
+- **On any new input** (digit, operator, function, AC, Del — anything that modifies `input_buffer`): activity returns to the input field.
+
+This is one rule, applied uniformly. No mode toggle, no dedicated activity-switch key.
+
+**Ans auto-insertion**: After a successful `=`, if the user's next click is an *operator* (`+`, `-`, `*`, `/`, `⊕`, `^`, `√`, `log`, `x²`), `Ans` is automatically inserted as the first token of a fresh `input_buffer`, followed by the operator. The user sees `Ans -` (or similar) appear and continues typing. This applies to `-` as well — there is no ambiguity check; `-` after `=` always means "minus from Ans". Users who want to start a new negative number after a result must press `AC` first.
+
+If the user instead clicks a digit, constant, opening parenthesis, or function (sin, cos, …) after `=`, the `input_buffer` is started fresh without auto-Ans.
+
+The explicit `Ans` key (6.4) remains available and is *not* redundant: it allows inserting Ans at any position in an expression (e.g. as a second operand: `5 + Ans`), not only at the start.
+
 ### Double-click for inverse functions
 
-A second click on a function key replaces the just-inserted token with its inverse. This pattern is established for trigonometry (`sin → asin`, `cos → acos`, etc.) and **must be extended** to all overlay functions where an inverse exists:
+A second click on a function key replaces the just-inserted token with its inverse. Established for trigonometry and extended to all overlay functions where an inverse exists:
 
-- Hyperbolics: `sinh ↔ arsinh`, `cosh ↔ arcosh`, `tanh ↔ artanh`, `coth ↔ arcoth`
-- Logarithms/exponentials: where applicable (e.g. `log ↔ 10ˣ`, `ln ↔ eˣ`)
-- Powers/roots: where applicable (e.g. `x² ↔ √x`)
-
-Rationale: nobody actually computes `sin(sin(x))`, so the second-click slot is free real estate. This **doubles the available functions per key** without adding visual complexity.
+- Trig (Set 3): `sin ↔ asin`, `cos ↔ acos`, `tan ↔ atan`, `cot ↔ acot`
+- Hyperbolics (Set 8): `sinh ↔ arsinh`, `cosh ↔ arcosh`, `tanh ↔ artanh`, `coth ↔ arcoth`
+- Set 9 keys (n!, |x|, 1/x, mod): no inverses currently — slots reserved for future use.
 
 ### Visual indicator for "armed" inverse mode
 
-When the previous token in `input_buffer` is the same function (so the next click would toggle to inverse), the corresponding key should show a **subtle visual marker** — for example a small dot or a thin border accent. The label itself does NOT change. The marker is a passive affordance, not a mode switch.
+When the previous token in `input_buffer` is the same function (so the next click would toggle to inverse), the corresponding key shows a subtle visual marker (small dot or thin border accent — exact form TBD, see DESIGN_NOTES.md). The label itself does not change.
 
 ### Error state behavior
 
 When `error_msg` is `Some(...)`:
-- All keys except `AC` (and possibly `Del`) are **inactive**.
-- `AC` clears the error AND the input/result, returning to a clean state.
-- `error_msg` is reset to `None` on any successful calculation, on `AC`, and on entry of any new digit (TBD — see DESIGN_NOTES.md).
-
-The current code only resets `error_msg` on successful calculation, which is the root cause of the "error won't go away" bug.
+- All keys except `AC` are inactive (overlay-open state included).
+- `AC` clears the error and the input/result buffers.
+- `error_msg` is reset to `None` on any successful calculation and on `AC`.
 
 ## Memory Model
 
-Following the TI-30 eco RS philosophy, but condensed:
-- Memory operations live exclusively in the expansion overlay (no top-level memory keys).
-- Memory does NOT auto-accumulate (M+ Casio-style is rejected). Memory is explicitly stored via `STO` and recalled via `RCL`.
-- The `Ans` token holds the last successful result and can be inserted into a new calculation.
-- `MC` clears the memory.
-
-Number of memory slots is still under deliberation (see DESIGN_NOTES.md). Likely 1 or 3.
+- One memory slot. STO stores, RCL recalls, MC clears, Ans holds the last result.
+- Memory does NOT auto-accumulate (Casio-style M+ is rejected).
+- The Memory indicator (`M` shown top-left of display when memory is non-empty) reflects this single slot.
+- Memory stores the exact `Rational` when available, falling back to `f64` otherwise — so periodicity survives a STO/RCL roundtrip.
+- A future v2 may introduce multiple slots if user demand arises; this is *not* a v1 feature.
 
 ## Display Conventions
 
-- Default precision: **4 dozenal fractional digits** for computed results.
-- Cursor: red vertical bar inside the input field, navigable with `◀` / `▶`.
+- Default precision: **4 dozenal fractional digits** for f64 results.
+- Periodic decimals (when the rational track succeeds): see "Periodic Decimals" section above.
+- Cursor: red vertical bar inside the active field, navigable with `◀` / `▶`.
 - Memory indicator: `M` shown top-left of display when memory is non-empty.
+- Angle mode indicator: `DEG` / `RAD` / `GRAD` shown top-right of display, controlled by Set 10.2 (DRG).
+- Display base indicator: a subtle marker shown when in decimal mode (Doz is the default; Dec is a temporary inspection mode triggered by Set 10.1).
 - Error display: red text replacing the normal display content.
-- (Planned) For irrational constants, a horizontal-scroll mode showing precomputed high-precision strings (e.g. ~1000 dozenal digits) — implemented via hardcoded constants, not a runtime arbitrary-precision engine. See DESIGN_NOTES.md.
 
 ## Code Quality Principles
 
@@ -174,64 +254,60 @@ These are project-specific and require human/AI judgment:
 **Layer separation**:
 - `logic.rs` is the pure data layer. It must not import `egui`, `eframe`, or any UI crate. It must not contain UI text strings.
 - `main.rs` is the UI layer. It may import `logic.rs`, but never the reverse.
-- When new computational logic is added, it goes into `logic.rs` first, then `main.rs` calls it. If a function in `main.rs` does math beyond trivial arithmetic for layout, that's a smell — propose moving it.
+- The `Rational` type and period detection belong in `logic.rs`. Overline rendering belongs in `main.rs`.
+- When new computational logic is added, it goes into `logic.rs` first, then `main.rs` calls it.
 
 **Single Responsibility, applied loosely**:
 - Functions whose names contain "and" usually do two things; consider splitting.
 - A function that mixes UI rendering and state mutation (`handle_click` is a deliberate exception) should be reconsidered.
-- The `paint_*` functions are pure rendering — keep them that way. They take state as input and produce visual output, never mutate.
+- The `paint_*` functions are pure rendering — keep them that way.
 
 **Magic numbers**:
-- Layout breakpoints, default precisions, button sizes — anything that appears more than once or has semantic meaning beyond "this number works" — should be a named constant near the top of the relevant file or in a `const` block.
-- Example: `if width < 500.0` becomes `const MOBILE_BREAKPOINT_PX: f32 = 500.0;` then `if width < MOBILE_BREAKPOINT_PX`.
+- Layout breakpoints, default precisions, button sizes — anything that appears more than once or has semantic meaning beyond "this number works" — should be a named constant.
+- Example: `if width < 500.0` becomes `const MOBILE_BREAKPOINT_PX: f32 = 500.0;`.
 
 **Code duplication**:
-- If the same pattern appears in `draw_desktop_layout` and `draw_mobile_layout`, extract a helper function that both call. The current code has some duplication (e.g. button rendering loops); reducing it is welcome when touching those areas.
+- If the same pattern appears in `draw_desktop_layout` and `draw_mobile_layout`, extract a helper function.
 
 **Comments**:
-- Comments explain *why*, not *what*. `// increment counter` above `i += 1` is noise. `// We start at 1 because index 0 is the header` is signal.
+- Comments explain *why*, not *what*.
 - The existing codebase mixes German and English comments. Preserve this style — do not translate or normalize without explicit request.
 - Doc comments (`///`) on public items in `logic.rs` are encouraged.
 
 **Refactor policy**:
-- When a patch touches an area where existing code could be cleaner, **propose** the refactor — do not silently include it. The user decides whether the cleanup belongs in the current patch or a separate one.
-- "Functional but ugly" is not "fine". Existing rough spots are candidates for cleanup when you're already in the neighborhood — but ask first.
-- Never refactor `paint_dozenal_digit`, `paint_token`, or the layout proportions without explicit request. Those define the project's visual identity.
+- When a patch touches an area where existing code could be cleaner, **propose** the refactor — do not silently include it.
+- Never refactor `paint_dozenal_digit`, `paint_token`, or the layout proportions without explicit request.
 
 ## Coding Conventions for Claude Code
-
-These are operational rules for Claude Code when modifying this repository.
 
 ### Compiler errors
 
 - Run `cargo check` **before** starting a patch to know the baseline.
-- Run `cargo check` (or the full quality triple above) **after** each patch to verify nothing was broken.
-- Read the full error message before acting. Rust's compiler errors are precise — use them, don't guess.
-- Do not introduce `unwrap()` or `expect()` without a written justification in the comment above. The existing code uses idiomatic `Option`/`Result` handling — preserve that style.
-- Prefer the smallest possible change. If a fix can be 3 lines, do not refactor 30.
+- Run `cargo check` (or the full quality triple above) **after** each patch.
+- Do not introduce `unwrap()` or `expect()` without a written justification in the comment above.
+- Prefer the smallest possible change.
 
 ### Runtime errors (user-visible)
 
 - The app uses `error_msg: Option<String>` for user-visible errors. Never insert `panic!`, `todo!`, or `unimplemented!` into runtime paths.
-- Error messages follow a consistent format: short, all caps, descriptive (`"DIV BY ZERO"`, `"SYNTAX ERROR"`). New error types must follow this convention.
-- Errors must be clearable by the user. Whenever a new error path is added, verify that `AC` (and other reset paths) clear it.
+- Error messages follow a consistent format: short, all caps, descriptive (`"DIV BY ZERO"`, `"SYNTAX ERROR"`, `"OVERFLOW"`).
+- Errors must be clearable by the user. Whenever a new error path is added, verify that `AC` clears it.
 
 ### Tests
 
-- Tests live in `src/logic.rs` and cover the dozenal/decimal conversion logic.
-- When changing `logic.rs`: run `cargo test` and ensure all pass. Add tests for new logic.
-- When changing `main.rs`: there are no automated tests. Verify manually with `cargo run` (desktop) and `trunk serve` (web). Both targets must work — never break one to fix the other.
-- Pure functions in `main.rs` may be moved to `logic.rs` if they would benefit from testing.
+- Tests live in `src/logic.rs` and cover the dozenal/decimal conversion logic plus the rational arithmetic and period detection.
+- When changing `logic.rs`: run `cargo test` and ensure all pass. Add tests for new logic, especially edge cases for `Rational` (overflow, divide by zero, finite vs. periodic detection).
+- When changing `main.rs`: there are no automated tests. Verify manually with `cargo run` and `trunk serve`.
 
 ### Build & deployment
 
-- The CI deploys `main` automatically via `.github/workflows/deploy.yml`. **Never push directly to `main` without local verification.**
-- Before pushing: run the quality triple (`fmt`, `clippy`, `test`) plus `cargo build --release` and `trunk build --release --public-url /dozenal_calc/`. If any fails, do not push.
-- For larger changes (overlay implementation, memory refactor, etc.): use a feature branch and merge via PR after local verification.
-- The web build uses WebAssembly. Avoid dependencies that don't compile to `wasm32-unknown-unknown` (notably anything requiring a C toolchain like GMP). Pure-Rust crates only.
+- The CI deploys `main` automatically. Never push directly to `main` without local verification.
+- Before pushing: run the quality triple plus `cargo build --release` and `trunk build --release --public-url /dozenal_calc/`.
+- For larger changes (overlay implementation, rational track, etc.): use a feature branch and merge via PR.
+- The web build uses WebAssembly. Avoid dependencies that don't compile to `wasm32-unknown-unknown`. Pure-Rust crates only. The `Rational` type is implemented from scratch (not via `num-rational`) to avoid dependency creep.
 
 ### General code hygiene
 
-- Preserve the `paint_dozenal_digit` and `paint_token` drawing routines as-is unless explicitly asked. The visual identity (custom digit symbols) is the project's signature.
-- Preserve the layout proportions in `draw_desktop_layout` and `draw_mobile_layout` unless explicitly asked. Do not "improve" the design.
+- Preserve the `paint_dozenal_digit` and `paint_token` drawing routines as-is unless explicitly asked.
+- Preserve the layout proportions in `draw_desktop_layout` and `draw_mobile_layout` unless explicitly asked.
 - New `CalcToken` variants must be added to all `match` statements that handle tokens (compiler will complain if forgotten — use this as a guide).

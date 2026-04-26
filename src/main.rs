@@ -2,7 +2,7 @@ mod logic;
 
 use eframe::egui;
 use egui::{Align2, Color32, FontId, Pos2, Rect, Stroke, Vec2};
-use logic::{DozenalConverter, DozenalDigit};
+use logic::{DozenalConverter, DozenalDigit, RatExpr, Rational, eval_rational};
 
 #[derive(Clone, Copy, PartialEq)]
 enum CalcToken {
@@ -112,6 +112,7 @@ struct DozenalCalcApp {
     result_buffer: Vec<CalcToken>,
     cursor_pos: usize,
     memory: Vec<CalcToken>,
+    last_ans: Option<Rational>,
     error_msg: Option<String>,
     overlay_open: bool,
 }
@@ -123,10 +124,111 @@ impl Default for DozenalCalcApp {
             result_buffer: vec![CalcToken::Digit(DozenalDigit::D0)],
             cursor_pos: 0,
             memory: Vec::new(),
+            last_ans: None,
             error_msg: None,
             overlay_open: false,
         }
     }
+}
+
+/// Converts the `input_buffer` token sequence into `RatExpr` atoms for the
+/// rational evaluation track. Returns `None` as soon as a non-rational token
+/// (transcendental function, irrational constant, etc.) is encountered.
+fn build_rat_expr(tokens: &[CalcToken]) -> Option<Vec<RatExpr>> {
+    let mut exprs = Vec::new();
+    let mut i = 0;
+    while i < tokens.len() {
+        match tokens[i] {
+            CalcToken::Digit(_) => {
+                let mut int_d: Vec<DozenalDigit> = Vec::new();
+                let mut frac_d: Vec<DozenalDigit> = Vec::new();
+                let mut in_frac = false;
+                loop {
+                    if i >= tokens.len() {
+                        break;
+                    }
+                    match tokens[i] {
+                        CalcToken::Digit(d) => {
+                            if in_frac {
+                                frac_d.push(d);
+                            } else {
+                                int_d.push(d);
+                            }
+                            i += 1;
+                        }
+                        CalcToken::Decimal if !in_frac => {
+                            in_frac = true;
+                            i += 1;
+                        }
+                        _ => break,
+                    }
+                }
+                let int_val = DozenalConverter::to_decimal_exact(&int_d)?;
+                let int_rat = Rational::new(int_val, 1)?;
+                let rat = if frac_d.is_empty() {
+                    int_rat
+                } else {
+                    let frac_num = DozenalConverter::to_decimal_exact(&frac_d)?;
+                    let frac_den = 12_i128.checked_pow(frac_d.len() as u32)?;
+                    int_rat.add(Rational::new(frac_num, frac_den)?)?
+                };
+                exprs.push(RatExpr::Num(rat));
+            }
+            CalcToken::Decimal => {
+                // Leading decimal point: implicit zero integer part (e.g. ".6")
+                i += 1;
+                let mut frac_d: Vec<DozenalDigit> = Vec::new();
+                while i < tokens.len() {
+                    if let CalcToken::Digit(d) = tokens[i] {
+                        frac_d.push(d);
+                        i += 1;
+                    } else {
+                        break;
+                    }
+                }
+                if frac_d.is_empty() {
+                    return None;
+                }
+                let frac_num = DozenalConverter::to_decimal_exact(&frac_d)?;
+                let frac_den = 12_i128.checked_pow(frac_d.len() as u32)?;
+                exprs.push(RatExpr::Num(Rational::new(frac_num, frac_den)?));
+            }
+            CalcToken::Add => {
+                exprs.push(RatExpr::Add);
+                i += 1;
+            }
+            CalcToken::Sub | CalcToken::Negate => {
+                exprs.push(RatExpr::Sub);
+                i += 1;
+            }
+            CalcToken::Mul => {
+                exprs.push(RatExpr::Mul);
+                i += 1;
+            }
+            CalcToken::Div => {
+                exprs.push(RatExpr::Div);
+                i += 1;
+            }
+            CalcToken::ParenOpen => {
+                exprs.push(RatExpr::LParen);
+                i += 1;
+            }
+            CalcToken::ParenClose => {
+                exprs.push(RatExpr::RParen);
+                i += 1;
+            }
+            CalcToken::ExpTopRight => {
+                exprs.push(RatExpr::Pow);
+                i += 1;
+            }
+            CalcToken::OplusBotLeft => {
+                exprs.push(RatExpr::OPlus);
+                i += 1;
+            }
+            _ => return None, // non-rational token → collapse the track
+        }
+    }
+    Some(exprs)
 }
 
 // --- DER ÜBERSETZER UND DIE LAYOUTS ---
@@ -434,6 +536,9 @@ impl DozenalCalcApp {
             math_string.push(')');
         }
 
+        // --- Rational track (runs independently of meval) ---
+        let rat_result = build_rat_expr(&self.input_buffer).and_then(|exprs| eval_rational(&exprs));
+
         // --- HIER STARTET DIE NEUE FEHLERBEHANDLUNG ---
         let mut ctx = meval::Context::new();
         ctx.func("cot", |x: f64| 1.0 / x.tan());
@@ -452,7 +557,8 @@ impl DozenalCalcApp {
         ctx.func("recip", |x: f64| 1.0 / x);
         match meval::eval_str_with_context(&math_string, (ctx, meval::builtin())) {
             Ok(result) if result.is_finite() => {
-                self.error_msg = None; // Alles gut, eventuelle alte Fehler löschen
+                self.error_msg = None;
+                self.last_ans = rat_result; // store exact result when available
 
                 let mut new_result = Vec::new();
                 let mut val = result;

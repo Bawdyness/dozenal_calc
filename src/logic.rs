@@ -105,6 +105,177 @@ impl DozenalConverter {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Rational arithmetic
+// ---------------------------------------------------------------------------
+
+/// Exact rational number. Invariants: `den > 0`, always in lowest terms.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Rational {
+    pub num: i128,
+    pub den: i128,
+}
+
+// allow: used by Rational methods below and in tests; main.rs wires in at Step 4.
+#[allow(dead_code)]
+fn gcd(a: i128, b: i128) -> i128 {
+    let (mut a, mut b) = (a.abs(), b.abs());
+    while b != 0 {
+        let t = b;
+        b = a % b;
+        a = t;
+    }
+    a
+}
+
+// allow: all methods used in tests; main.rs calls them in Step 4.
+#[allow(dead_code)]
+impl Rational {
+    /// Returns `None` on division by zero.
+    pub fn new(num: i128, den: i128) -> Option<Self> {
+        if den == 0 {
+            return None;
+        }
+        let sign = if den < 0 { -1 } else { 1 };
+        let g = gcd(num, den);
+        Some(Self {
+            num: sign * num / g,
+            den: sign * den / g,
+        })
+    }
+
+    pub fn zero() -> Self {
+        Self { num: 0, den: 1 }
+    }
+
+    pub fn one() -> Self {
+        Self { num: 1, den: 1 }
+    }
+
+    /// Checked addition. Returns `None` on overflow.
+    pub fn add(self, rhs: Self) -> Option<Self> {
+        let ad = self.num.checked_mul(rhs.den)?;
+        let bc = rhs.num.checked_mul(self.den)?;
+        let num = ad.checked_add(bc)?;
+        let den = self.den.checked_mul(rhs.den)?;
+        Self::new(num, den)
+    }
+
+    /// Checked subtraction. Returns `None` on overflow.
+    pub fn sub(self, rhs: Self) -> Option<Self> {
+        let ad = self.num.checked_mul(rhs.den)?;
+        let bc = rhs.num.checked_mul(self.den)?;
+        let num = ad.checked_sub(bc)?;
+        let den = self.den.checked_mul(rhs.den)?;
+        Self::new(num, den)
+    }
+
+    /// Checked multiplication. Returns `None` on overflow.
+    pub fn mul(self, rhs: Self) -> Option<Self> {
+        let num = self.num.checked_mul(rhs.num)?;
+        let den = self.den.checked_mul(rhs.den)?;
+        Self::new(num, den)
+    }
+
+    /// Checked division. Returns `None` on division by zero or overflow.
+    pub fn div(self, rhs: Self) -> Option<Self> {
+        if rhs.num == 0 {
+            return None;
+        }
+        let num = self.num.checked_mul(rhs.den)?;
+        let den = self.den.checked_mul(rhs.num)?;
+        Self::new(num, den)
+    }
+
+    /// Integer power (negative exponent allowed). Returns `None` on overflow or 0^neg.
+    pub fn pow(self, exp: i32) -> Option<Self> {
+        if exp == 0 {
+            return Some(Self::one());
+        }
+        if exp < 0 {
+            // x^(-n) = (1/x)^n
+            if self.num == 0 {
+                return None;
+            }
+            return Self::new(self.den, self.num)?.pow(-exp);
+        }
+        let mut result = Self::one();
+        let mut base = self;
+        let mut e = exp as u32;
+        while e > 0 {
+            if e & 1 == 1 {
+                result = result.mul(base)?;
+            }
+            base = base.mul(base)?;
+            e >>= 1;
+        }
+        Some(result)
+    }
+
+    /// Parallel-resistor operator: (a*b)/(a+b). Returns `None` on a+b=0 or overflow.
+    pub fn oplus(self, rhs: Self) -> Option<Self> {
+        let product = self.mul(rhs)?;
+        let sum = self.add(rhs)?;
+        product.div(sum)
+    }
+
+    // Used by the parallel evaluation track in main.rs (Step 4).
+    #[allow(dead_code)]
+    pub fn to_f64(self) -> f64 {
+        self.num as f64 / self.den as f64
+    }
+
+    /// Decomposes the fraction into its base-12 representation.
+    /// Returns `(integer_digits, pre_period_digits, period_digits)`.
+    /// `period_digits` is empty iff the expansion is finite.
+    /// The period is capped at 100 digits to bound computation.
+    pub fn to_dozenal_periodic(self) -> (Vec<DozenalDigit>, Vec<DozenalDigit>, Vec<DozenalDigit>) {
+        let negative = self.num < 0;
+        let abs_num = self.num.abs();
+        let den = self.den; // always positive by invariant
+
+        let int_part = abs_num / den;
+        let mut rem = abs_num % den;
+
+        let int_digits = if negative {
+            // Caller handles sign; just provide magnitude digits
+            DozenalConverter::from_decimal(int_part as f64)
+        } else {
+            DozenalConverter::from_decimal(int_part as f64)
+        };
+
+        // Long division in base 12 with remainder tracking
+        let mut frac_digits: Vec<DozenalDigit> = Vec::new();
+        // Maps remainder → position at which it was first seen
+        let mut seen: std::collections::HashMap<i128, usize> = std::collections::HashMap::new();
+
+        loop {
+            if rem == 0 {
+                // Finite expansion
+                return (int_digits, frac_digits, Vec::new());
+            }
+            if let Some(&first_pos) = seen.get(&rem) {
+                // Period found: split frac_digits at first_pos
+                let period = frac_digits.split_off(first_pos);
+                return (int_digits, frac_digits, period);
+            }
+            if frac_digits.len() >= 100 {
+                // Safety cap — treat as non-periodic (caller gets empty period)
+                return (int_digits, frac_digits, Vec::new());
+            }
+            seen.insert(rem, frac_digits.len());
+            rem *= 12;
+            let digit_val = (rem / den) as u32;
+            rem %= den;
+            if let Some(d) = DozenalDigit::from_value(digit_val) {
+                frac_digits.push(d);
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -120,5 +291,162 @@ mod tests {
         let doz_input = vec![DozenalDigit::D1, DozenalDigit::D4];
         let dec_result = DozenalConverter::to_decimal(&doz_input);
         assert_eq!(dec_result, 16.0);
+    }
+
+    // --- Rational basic arithmetic ---
+
+    #[test]
+    fn rational_new_reduces() {
+        let r = Rational::new(6, 9).unwrap();
+        assert_eq!(r.num, 2);
+        assert_eq!(r.den, 3);
+    }
+
+    #[test]
+    fn rational_new_negative_den() {
+        let r = Rational::new(1, -2).unwrap();
+        assert_eq!(r.num, -1);
+        assert_eq!(r.den, 2);
+    }
+
+    #[test]
+    fn rational_new_div_by_zero() {
+        assert!(Rational::new(1, 0).is_none());
+    }
+
+    #[test]
+    fn rational_add() {
+        let a = Rational::new(1, 3).unwrap();
+        let b = Rational::new(1, 6).unwrap();
+        let c = a.add(b).unwrap();
+        assert_eq!(c.num, 1);
+        assert_eq!(c.den, 2);
+    }
+
+    #[test]
+    fn rational_sub() {
+        let a = Rational::new(3, 4).unwrap();
+        let b = Rational::new(1, 4).unwrap();
+        let c = a.sub(b).unwrap();
+        assert_eq!(c.num, 1);
+        assert_eq!(c.den, 2);
+    }
+
+    #[test]
+    fn rational_mul() {
+        let a = Rational::new(2, 3).unwrap();
+        let b = Rational::new(3, 4).unwrap();
+        let c = a.mul(b).unwrap();
+        assert_eq!(c.num, 1);
+        assert_eq!(c.den, 2);
+    }
+
+    #[test]
+    fn rational_div() {
+        let a = Rational::new(1, 2).unwrap();
+        let b = Rational::new(3, 4).unwrap();
+        let c = a.div(b).unwrap();
+        assert_eq!(c.num, 2);
+        assert_eq!(c.den, 3);
+    }
+
+    #[test]
+    fn rational_div_by_zero() {
+        let a = Rational::new(1, 2).unwrap();
+        let z = Rational::zero();
+        assert!(a.div(z).is_none());
+    }
+
+    #[test]
+    fn rational_pow_positive() {
+        let a = Rational::new(2, 3).unwrap();
+        let r = a.pow(3).unwrap();
+        assert_eq!(r.num, 8);
+        assert_eq!(r.den, 27);
+    }
+
+    #[test]
+    fn rational_pow_negative() {
+        let a = Rational::new(2, 3).unwrap();
+        let r = a.pow(-1).unwrap();
+        assert_eq!(r.num, 3);
+        assert_eq!(r.den, 2);
+    }
+
+    #[test]
+    fn rational_pow_zero() {
+        let a = Rational::new(5, 7).unwrap();
+        let r = a.pow(0).unwrap();
+        assert_eq!(r, Rational::one());
+    }
+
+    #[test]
+    fn rational_oplus() {
+        // 2 ⊕ 3 = (2*3)/(2+3) = 6/5
+        let a = Rational::new(2, 1).unwrap();
+        let b = Rational::new(3, 1).unwrap();
+        let r = a.oplus(b).unwrap();
+        assert_eq!(r.num, 6);
+        assert_eq!(r.den, 5);
+    }
+
+    // --- Period detection ---
+
+    #[test]
+    fn period_finite_half() {
+        // 1/2 = 0.6 in base 12 (finite)
+        let r = Rational::new(1, 2).unwrap();
+        let (int, pre, period) = r.to_dozenal_periodic();
+        assert_eq!(int, vec![DozenalDigit::D0]);
+        assert_eq!(pre, vec![DozenalDigit::D6]);
+        assert!(period.is_empty());
+    }
+
+    #[test]
+    fn period_one_fifth() {
+        // 1/5 = 0.[2497] in base 12 (period 4)
+        let r = Rational::new(1, 5).unwrap();
+        let (_int, pre, period) = r.to_dozenal_periodic();
+        assert!(pre.is_empty());
+        assert_eq!(period.len(), 4);
+        assert_eq!(period[0], DozenalDigit::D2);
+        assert_eq!(period[1], DozenalDigit::D4);
+        assert_eq!(period[2], DozenalDigit::D9);
+        assert_eq!(period[3], DozenalDigit::D7);
+    }
+
+    #[test]
+    fn period_one_eleventh() {
+        // 1/B (=1/11 dec) = 0.[1] in base 12 (period 1)
+        let r = Rational::new(1, 11).unwrap();
+        let (_int, pre, period) = r.to_dozenal_periodic();
+        assert!(pre.is_empty());
+        assert_eq!(period.len(), 1);
+        assert_eq!(period[0], DozenalDigit::D1);
+    }
+
+    #[test]
+    fn period_integer() {
+        // 7/1 — finite, no fractional part
+        let r = Rational::new(7, 1).unwrap();
+        let (int, pre, period) = r.to_dozenal_periodic();
+        assert_eq!(int, vec![DozenalDigit::D7]);
+        assert!(pre.is_empty());
+        assert!(period.is_empty());
+    }
+
+    #[test]
+    fn period_one_seventh() {
+        // 1/7 = 0.[186A35] in base 12 (period 6)
+        let r = Rational::new(1, 7).unwrap();
+        let (_int, pre, period) = r.to_dozenal_periodic();
+        assert!(pre.is_empty());
+        assert_eq!(period.len(), 6);
+        assert_eq!(period[0], DozenalDigit::D1);
+        assert_eq!(period[1], DozenalDigit::D8);
+        assert_eq!(period[2], DozenalDigit::D6);
+        assert_eq!(period[3], DozenalDigit::D10); // A
+        assert_eq!(period[4], DozenalDigit::D3);
+        assert_eq!(period[5], DozenalDigit::D5);
     }
 }

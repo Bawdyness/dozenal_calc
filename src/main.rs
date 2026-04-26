@@ -6,6 +6,7 @@ use logic::{DozenalConverter, DozenalDigit};
 
 #[derive(Clone, Copy, PartialEq)]
 enum CalcToken {
+    // Main keypad
     Digit(DozenalDigit),
     Add,
     Sub,
@@ -29,10 +30,39 @@ enum CalcToken {
     TriangleLeft,
     AC,
     Del,
-    MPlus,
     Decimal,
     Equals,
+    Expand,
     Negate, // unary minus in result_buffer; distinct from Sub (binary) to survive re-insertion
+    // Overlay Set 6 — Memory
+    Sto,
+    Rcl,
+    Mc,
+    Ans,
+    // Overlay Set 7 — Constants
+    ConstPi,
+    ConstE,
+    ConstPhi,
+    ConstSqrt2,
+    // Overlay Set 8 — Hyperbolic
+    Sinh,
+    Cosh,
+    Tanh,
+    Coth,
+    ArSinh,
+    ArCosh,
+    ArTanh,
+    ArCoth,
+    // Overlay Set 9 — Extended
+    Factorial,
+    AbsVal,
+    Reciprocal,
+    Mod,
+    // Overlay Set 10 — Modes & Meta
+    DozDec,
+    Drg,
+    Info,
+    Close,
 }
 
 // 1. Die Tür für den Desktop (Native)
@@ -82,7 +112,8 @@ struct DozenalCalcApp {
     result_buffer: Vec<CalcToken>,
     cursor_pos: usize,
     memory: Vec<CalcToken>,
-    error_msg: Option<String>, // Speichert Fehlermeldungen
+    error_msg: Option<String>,
+    overlay_open: bool,
 }
 
 impl Default for DozenalCalcApp {
@@ -93,6 +124,7 @@ impl Default for DozenalCalcApp {
             cursor_pos: 0,
             memory: Vec::new(),
             error_msg: None,
+            overlay_open: false,
         }
     }
 }
@@ -133,17 +165,81 @@ impl DozenalCalcApp {
                     self.cursor_pos += 1;
                 }
             }
-            CalcToken::MPlus => {
-                if self.input_buffer.is_empty() {
-                    self.memory = self.result_buffer.clone();
-                } else {
-                    for m_token in &self.memory {
-                        self.input_buffer.insert(self.cursor_pos, *m_token);
+            CalcToken::Expand => {
+                self.overlay_open = true;
+            }
+            CalcToken::Close => {
+                self.overlay_open = false;
+            }
+            // Set 6 — Memory
+            CalcToken::Sto => {
+                self.memory = self.result_buffer.clone();
+                self.overlay_open = false;
+            }
+            CalcToken::Rcl => {
+                if !self.memory.is_empty() {
+                    for &m in &self.memory.clone() {
+                        self.input_buffer.insert(self.cursor_pos, m);
                         self.cursor_pos += 1;
                     }
                 }
+                self.overlay_open = false;
+            }
+            CalcToken::Mc => {
+                self.memory.clear();
+                self.overlay_open = false;
+            }
+            CalcToken::Ans => {
+                for &m in &self.result_buffer.clone() {
+                    self.input_buffer.insert(self.cursor_pos, m);
+                    self.cursor_pos += 1;
+                }
+                self.overlay_open = false;
+            }
+            // Set 7 — Constants: insert as decimal value tokens
+            CalcToken::ConstPi
+            | CalcToken::ConstE
+            | CalcToken::ConstPhi
+            | CalcToken::ConstSqrt2 => {
+                let val: f64 = match token {
+                    CalcToken::ConstPi => std::f64::consts::PI,
+                    CalcToken::ConstE => std::f64::consts::E,
+                    CalcToken::ConstPhi => 1.618_033_988_749_895,
+                    CalcToken::ConstSqrt2 => std::f64::consts::SQRT_2,
+                    _ => unreachable!(),
+                };
+                let int_part = DozenalConverter::from_decimal(val);
+                let frac_part = val - val.floor();
+                for d in int_part {
+                    self.input_buffer
+                        .insert(self.cursor_pos, CalcToken::Digit(d));
+                    self.cursor_pos += 1;
+                }
+                if frac_part > 1e-10 {
+                    self.input_buffer
+                        .insert(self.cursor_pos, CalcToken::Decimal);
+                    self.cursor_pos += 1;
+                    for d in DozenalConverter::frac_to_digits(frac_part, 8) {
+                        self.input_buffer
+                            .insert(self.cursor_pos, CalcToken::Digit(d));
+                        self.cursor_pos += 1;
+                    }
+                }
+                self.overlay_open = false;
+            }
+            // Set 9 — Extended: insert as function tokens where applicable
+            CalcToken::Mod => {
+                self.input_buffer.insert(self.cursor_pos, token);
+                self.cursor_pos += 1;
+                self.overlay_open = false;
             }
             _ => {
+                // DRG and Info/DozDec are modes — not inserted into buffer
+                if matches!(token, CalcToken::Drg | CalcToken::DozDec | CalcToken::Info) {
+                    // placeholder: mode handling in a later patch
+                    self.overlay_open = false;
+                    return;
+                }
                 let mut toggled = false;
                 if self.cursor_pos > 0 {
                     let prev_idx = self.cursor_pos - 1;
@@ -157,6 +253,14 @@ impl DozenalCalcApp {
                         (CalcToken::Tan, CalcToken::ArcTan) => Some(CalcToken::Tan),
                         (CalcToken::Cot, CalcToken::Cot) => Some(CalcToken::ArcCot),
                         (CalcToken::Cot, CalcToken::ArcCot) => Some(CalcToken::Cot),
+                        (CalcToken::Sinh, CalcToken::Sinh) => Some(CalcToken::ArSinh),
+                        (CalcToken::Sinh, CalcToken::ArSinh) => Some(CalcToken::Sinh),
+                        (CalcToken::Cosh, CalcToken::Cosh) => Some(CalcToken::ArCosh),
+                        (CalcToken::Cosh, CalcToken::ArCosh) => Some(CalcToken::Cosh),
+                        (CalcToken::Tanh, CalcToken::Tanh) => Some(CalcToken::ArTanh),
+                        (CalcToken::Tanh, CalcToken::ArTanh) => Some(CalcToken::Tanh),
+                        (CalcToken::Coth, CalcToken::Coth) => Some(CalcToken::ArCoth),
+                        (CalcToken::Coth, CalcToken::ArCoth) => Some(CalcToken::Coth),
                         _ => None,
                     };
                     if let Some(new_token) = swap {
@@ -167,6 +271,23 @@ impl DozenalCalcApp {
                 if !toggled {
                     self.input_buffer.insert(self.cursor_pos, token);
                     self.cursor_pos += 1;
+                }
+                // Overlay tokens close the overlay after insertion
+                if matches!(
+                    token,
+                    CalcToken::Sinh
+                        | CalcToken::Cosh
+                        | CalcToken::Tanh
+                        | CalcToken::Coth
+                        | CalcToken::ArSinh
+                        | CalcToken::ArCosh
+                        | CalcToken::ArTanh
+                        | CalcToken::ArCoth
+                        | CalcToken::Factorial
+                        | CalcToken::AbsVal
+                        | CalcToken::Reciprocal
+                ) {
+                    self.overlay_open = false;
                 }
             }
         }
@@ -215,6 +336,7 @@ impl DozenalCalcApp {
                         CalcToken::Sub | CalcToken::Negate => "-",
                         CalcToken::Mul => "*",
                         CalcToken::Div => "/",
+                        CalcToken::Mod => "%",
                         CalcToken::ParenOpen => "(",
                         CalcToken::ParenClose => ")",
                         CalcToken::Sin => "sin(",
@@ -229,6 +351,17 @@ impl DozenalCalcApp {
                         CalcToken::ArcCos => "acos(",
                         CalcToken::ArcTan => "atan(",
                         CalcToken::ArcCot => "acot(",
+                        CalcToken::Sinh => "sinh(",
+                        CalcToken::Cosh => "cosh(",
+                        CalcToken::Tanh => "tanh(",
+                        CalcToken::Coth => "coth(",
+                        CalcToken::ArSinh => "arsinh(",
+                        CalcToken::ArCosh => "arcosh(",
+                        CalcToken::ArTanh => "artanh(",
+                        CalcToken::ArCoth => "arcoth(",
+                        CalcToken::Factorial => "fact(",
+                        CalcToken::AbsVal => "abs(",
+                        CalcToken::Reciprocal => "recip(",
                         _ => "",
                     };
                     if !s.is_empty() {
@@ -306,6 +439,17 @@ impl DozenalCalcApp {
         ctx.func("cot", |x: f64| 1.0 / x.tan());
         // Convention A: acot range is (0, π), consistent with acot(x) = π/2 - atan(x).
         ctx.func("acot", |x: f64| std::f64::consts::FRAC_PI_2 - x.atan());
+        ctx.func("coth", |x: f64| x.cosh() / x.sinh());
+        ctx.func("arsinh", |x: f64| x.asinh());
+        ctx.func("arcosh", |x: f64| x.acosh());
+        ctx.func("artanh", |x: f64| x.atanh());
+        ctx.func("arcoth", |x: f64| 0.5 * ((x + 1.0) / (x - 1.0)).ln());
+        ctx.func("fact", |x: f64| {
+            let n = x.round() as u64;
+            (1..=n).fold(1u64, |acc, i| acc.saturating_mul(i)) as f64
+        });
+        ctx.func("abs", |x: f64| x.abs());
+        ctx.func("recip", |x: f64| 1.0 / x);
         match meval::eval_str_with_context(&math_string, (ctx, meval::builtin())) {
             Ok(result) if result.is_finite() => {
                 self.error_msg = None; // Alles gut, eventuelle alte Fehler löschen
@@ -431,7 +575,7 @@ impl DozenalCalcApp {
                 CalcToken::AC,
                 CalcToken::Del,
                 CalcToken::Decimal,
-                CalcToken::MPlus,
+                CalcToken::Expand,
             ]);
         });
         ui.add_space(15.0);
@@ -563,7 +707,7 @@ impl DozenalCalcApp {
                 render_btn(self, ui, CalcToken::AC, c);
                 render_btn(self, ui, CalcToken::Del, c);
                 render_btn(self, ui, CalcToken::Decimal, c);
-                render_btn(self, ui, CalcToken::MPlus, c);
+                render_btn(self, ui, CalcToken::Expand, c);
                 ui.end_row();
             });
 
@@ -580,6 +724,70 @@ impl DozenalCalcApp {
         paint_token(ui, ui.painter(), rect, CalcToken::Equals, color, 2.0);
         if resp.clicked() {
             self.handle_click(CalcToken::Equals);
+        }
+    }
+
+    fn draw_overlay(&mut self, ui: &mut egui::Ui, keypad_rect: Rect) {
+        // Dim the main keypad
+        ui.painter()
+            .rect_filled(keypad_rect, 0.0, Color32::from_black_alpha(180));
+
+        // Place the overlay in the same rect as the main keypad
+        let sets: [[CalcToken; 4]; 5] = [
+            [
+                CalcToken::Sto,
+                CalcToken::Rcl,
+                CalcToken::Mc,
+                CalcToken::Ans,
+            ],
+            [
+                CalcToken::ConstPi,
+                CalcToken::ConstE,
+                CalcToken::ConstPhi,
+                CalcToken::ConstSqrt2,
+            ],
+            [
+                CalcToken::Sinh,
+                CalcToken::Cosh,
+                CalcToken::Tanh,
+                CalcToken::Coth,
+            ],
+            [
+                CalcToken::Factorial,
+                CalcToken::AbsVal,
+                CalcToken::Reciprocal,
+                CalcToken::Mod,
+            ],
+            [
+                CalcToken::DozDec,
+                CalcToken::Drg,
+                CalcToken::Info,
+                CalcToken::Close,
+            ],
+        ];
+
+        let n_cols = 4usize;
+        let n_rows = 5usize;
+        let spacing = 6.0;
+        let btn_w = (keypad_rect.width() - spacing * (n_cols as f32 - 1.0)) / n_cols as f32;
+        let btn_h = (keypad_rect.height() - spacing * (n_rows as f32 - 1.0)) / n_rows as f32;
+
+        for (row_idx, row) in sets.iter().enumerate() {
+            for (col_idx, &token) in row.iter().enumerate() {
+                let x = keypad_rect.left() + col_idx as f32 * (btn_w + spacing);
+                let y = keypad_rect.top() + row_idx as f32 * (btn_h + spacing);
+                let rect = Rect::from_min_size(Pos2::new(x, y), Vec2::new(btn_w, btn_h));
+                let resp = ui.allocate_rect(rect, egui::Sense::click());
+                let color = if resp.is_pointer_button_down_on() {
+                    Color32::LIGHT_RED
+                } else {
+                    Color32::LIGHT_BLUE
+                };
+                paint_token(ui, ui.painter(), rect, token, color, 2.0);
+                if resp.clicked() {
+                    self.handle_click(token);
+                }
+            }
         }
     }
 }
@@ -690,7 +898,7 @@ impl eframe::App for DozenalCalcApp {
                                         CalcToken::ArcCos => "cos⁻¹",
                                         CalcToken::ArcTan => "tan⁻¹",
                                         CalcToken::ArcCot => "cot⁻¹",
-                                        CalcToken::MPlus => "M+",
+                                        CalcToken::Expand => "…",
                                         CalcToken::Decimal => ".",
                                         _ => "Op",
                                     };
@@ -732,10 +940,18 @@ impl eframe::App for DozenalCalcApp {
 
                 // --- DER NEUE RESPONSIVE SCHALTER ---
                 let is_mobile = ctx.screen_rect().width() < 500.0;
+                let keypad_top = ui.cursor().top();
                 if is_mobile {
                     self.draw_mobile_layout(ui);
                 } else {
                     self.draw_desktop_layout(ui);
+                }
+                if self.overlay_open {
+                    let keypad_rect = Rect::from_min_max(
+                        Pos2::new(ui.min_rect().left(), keypad_top),
+                        ui.min_rect().right_bottom(),
+                    );
+                    self.draw_overlay(ui, keypad_rect);
                 }
             });
         });
@@ -885,11 +1101,35 @@ fn paint_token(
                 CalcToken::ArcCot => "cot⁻¹",
                 CalcToken::ParenOpen => "(",
                 CalcToken::ParenClose => ")",
+                CalcToken::Sinh => "sinh",
+                CalcToken::Cosh => "cosh",
+                CalcToken::Tanh => "tanh",
+                CalcToken::Coth => "coth",
+                CalcToken::ArSinh => "sinh⁻¹",
+                CalcToken::ArCosh => "cosh⁻¹",
+                CalcToken::ArTanh => "tanh⁻¹",
+                CalcToken::ArCoth => "coth⁻¹",
                 CalcToken::AC => "AC",
                 CalcToken::Del => "DEL",
                 CalcToken::Decimal => ".",
                 CalcToken::Equals => "=",
-                CalcToken::MPlus => "M+",
+                CalcToken::Expand => "…",
+                CalcToken::Sto => "STO",
+                CalcToken::Rcl => "RCL",
+                CalcToken::Mc => "MC",
+                CalcToken::Ans => "Ans",
+                CalcToken::ConstPi => "π",
+                CalcToken::ConstE => "e",
+                CalcToken::ConstPhi => "φ",
+                CalcToken::ConstSqrt2 => "√2",
+                CalcToken::Factorial => "n!",
+                CalcToken::AbsVal => "|x|",
+                CalcToken::Reciprocal => "1/x",
+                CalcToken::Mod => "mod",
+                CalcToken::DozDec => "Doz",
+                CalcToken::Drg => "DRG",
+                CalcToken::Info => "Info",
+                CalcToken::Close => "✕",
                 _ => "",
             };
             // Auch die anderen Texte (wie "sin", "cos") passen sich jetzt an den Button an

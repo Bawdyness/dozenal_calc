@@ -34,6 +34,9 @@ enum CalcToken {
     Equals,
     Expand,
     Negate, // unary minus in result_buffer; distinct from Sub (binary) to survive re-insertion
+    /// Exact rational literal inserted by Ans / RCL. Carries the value through the pipeline
+    /// so periodicity survives a STO→RCL or Ans re-use roundtrip without precision loss.
+    RatLit(Rational),
     // Overlay Set 6 — Memory
     Sto,
     Rcl,
@@ -116,6 +119,7 @@ struct DozenalCalcApp {
     result_period_capped: bool,         // true when the true period exceeds 5 digits
     cursor_pos: usize,
     memory: Vec<CalcToken>,
+    memory_rational: Option<Rational>, // exact value for STO/RCL roundtrip
     last_ans: Option<Rational>,
     error_msg: Option<String>,
     overlay_open: bool,
@@ -131,6 +135,7 @@ impl Default for DozenalCalcApp {
             result_period_capped: false,
             cursor_pos: 0,
             memory: Vec::new(),
+            memory_rational: None,
             last_ans: None,
             error_msg: None,
             overlay_open: false,
@@ -232,6 +237,10 @@ fn build_rat_expr(tokens: &[CalcToken]) -> Option<Vec<RatExpr>> {
                 exprs.push(RatExpr::OPlus);
                 i += 1;
             }
+            CalcToken::RatLit(r) => {
+                exprs.push(RatExpr::Num(r));
+                i += 1;
+            }
             _ => return None, // non-rational token → collapse the track
         }
     }
@@ -286,25 +295,43 @@ impl DozenalCalcApp {
             // Set 6 — Memory
             CalcToken::Sto => {
                 self.memory = self.result_buffer.clone();
+                self.memory_rational = self.last_ans;
                 self.overlay_open = false;
             }
             CalcToken::Rcl => {
                 if !self.memory.is_empty() {
-                    for &m in &self.memory.clone() {
-                        self.input_buffer.insert(self.cursor_pos, m);
+                    if let Some(r) = self.memory_rational {
+                        // Exact rational — insert a single RatLit token
+                        self.input_buffer
+                            .insert(self.cursor_pos, CalcToken::RatLit(r));
                         self.cursor_pos += 1;
+                    } else {
+                        // f64 fallback — insert digit tokens from memory buffer
+                        for &m in &self.memory.clone() {
+                            self.input_buffer.insert(self.cursor_pos, m);
+                            self.cursor_pos += 1;
+                        }
                     }
                 }
                 self.overlay_open = false;
             }
             CalcToken::Mc => {
                 self.memory.clear();
+                self.memory_rational = None;
                 self.overlay_open = false;
             }
             CalcToken::Ans => {
-                for &m in &self.result_buffer.clone() {
-                    self.input_buffer.insert(self.cursor_pos, m);
+                if let Some(r) = self.last_ans {
+                    // Exact rational — insert a single RatLit token
+                    self.input_buffer
+                        .insert(self.cursor_pos, CalcToken::RatLit(r));
                     self.cursor_pos += 1;
+                } else {
+                    // f64 fallback — insert digit tokens from result buffer
+                    for &m in &self.result_buffer.clone() {
+                        self.input_buffer.insert(self.cursor_pos, m);
+                        self.cursor_pos += 1;
+                    }
                 }
                 self.overlay_open = false;
             }
@@ -476,7 +503,10 @@ impl DozenalCalcApp {
                         CalcToken::Reciprocal => "recip(",
                         _ => "",
                     };
-                    if !s.is_empty() {
+                    // RatLit carries its value directly; other tokens use the static string.
+                    if let CalcToken::RatLit(r) = token {
+                        tokens_str.push(r.to_f64().to_string());
+                    } else if !s.is_empty() {
                         tokens_str.push(s.to_string());
                     }
                 }
@@ -976,7 +1006,8 @@ impl eframe::App for DozenalCalcApp {
                         }
                     }
                     // Draw overline above period digits (before tokens so digits render on top)
-                    if let Some(ps) = self.result_period_start
+                    if let Some(ps) = self
+                        .result_period_start
                         .filter(|&ps| self.result_period_len > 0 && ps < n)
                     {
                         {
@@ -1075,6 +1106,7 @@ impl eframe::App for DozenalCalcApp {
                                         CalcToken::ArcCot => "cot⁻¹",
                                         CalcToken::Expand => "…",
                                         CalcToken::Decimal => ".",
+                                        CalcToken::RatLit(_) => "Ans",
                                         _ => "Op",
                                     };
                                     ui.painter().text(
@@ -1093,7 +1125,8 @@ impl eframe::App for DozenalCalcApp {
                                         | CalcToken::Cos
                                         | CalcToken::Tan
                                         | CalcToken::Cot
-                                        | CalcToken::LogBotRight => 45.0,
+                                        | CalcToken::LogBotRight
+                                        | CalcToken::RatLit(_) => 45.0,
                                         _ => 30.0,
                                     };
                                 }

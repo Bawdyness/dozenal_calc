@@ -230,8 +230,6 @@ impl Rational {
         product.div(sum)
     }
 
-    // Used by the parallel evaluation track in main.rs (Step 4).
-    #[allow(dead_code)]
     pub fn to_f64(self) -> f64 {
         self.num as f64 / self.den as f64
     }

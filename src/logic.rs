@@ -1,6 +1,17 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DozenalDigit {
-    D0, D1, D2, D3, D4, D5, D6, D7, D8, D9, D10, D11
+    D0,
+    D1,
+    D2,
+    D3,
+    D4,
+    D5,
+    D6,
+    D7,
+    D8,
+    D9,
+    D10,
+    D11,
 }
 
 impl DozenalDigit {
@@ -8,13 +19,13 @@ impl DozenalDigit {
     pub fn to_value(self) -> u32 {
         match self {
             DozenalDigit::D0 => 0,
-            DozenalDigit::D1 => 1,  // Ankerpunkt: Pfeil hoch ^
+            DozenalDigit::D1 => 1, // Ankerpunkt: Pfeil hoch ^
             DozenalDigit::D2 => 2,
             DozenalDigit::D3 => 3,
-            DozenalDigit::D4 => 4,  // Ankerpunkt: Pfeil links <
+            DozenalDigit::D4 => 4, // Ankerpunkt: Pfeil links <
             DozenalDigit::D5 => 5,
             DozenalDigit::D6 => 6,
-            DozenalDigit::D7 => 7,  // Ankerpunkt: Pfeil rechts >
+            DozenalDigit::D7 => 7, // Ankerpunkt: Pfeil rechts >
             DozenalDigit::D8 => 8,
             DozenalDigit::D9 => 9,
             DozenalDigit::D10 => 10, // Ankerpunkt: Pfeil runter v
@@ -59,23 +70,40 @@ impl DozenalConverter {
     // Macht aus einer Dezimalzahl eine Liste von Dozenal-Ziffern
     // Beispiel: 14 -> 14 / 12 = 1 Rest 2 -> [D1, D2]
     pub fn from_decimal(value: f64) -> Vec<DozenalDigit> {
-        if value == 0.0 { return vec![DozenalDigit::D0]; }
-        
         let mut digits = Vec::new();
-        let mut integer_part = value.floor() as u64;
-        
-        while integer_part > 0 {
-            let remainder = (integer_part % 12) as u32;
-            if let Some(d) = DozenalDigit::from_value(remainder) {
+        let mut integer_part = value.floor();
+        if integer_part < 1.0 {
+            digits.push(DozenalDigit::D0);
+        } else {
+            // f64 arithmetic avoids u64 overflow for large results (e.g. 12^20).
+            while integer_part >= 1.0 {
+                let remainder = (integer_part % 12.0) as u32;
+                if let Some(d) = DozenalDigit::from_value(remainder) {
+                    digits.push(d);
+                }
+                integer_part = (integer_part / 12.0).floor();
+            }
+            digits.reverse();
+        }
+        digits
+    }
+
+    pub fn frac_to_digits(mut frac: f64, precision: usize) -> Vec<DozenalDigit> {
+        let mut digits = Vec::new();
+        for _ in 0..precision {
+            frac *= 12.0;
+            let d_val = (frac + 0.000001).floor() as u32;
+            if let Some(d) = DozenalDigit::from_value(d_val) {
                 digits.push(d);
             }
-            integer_part /= 12;
+            frac -= d_val as f64;
+            if frac.abs() < 0.000001 {
+                break;
+            }
         }
-        digits.reverse();
         digits
     }
 }
-
 
 #[cfg(test)]
 mod tests {

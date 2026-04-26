@@ -2,7 +2,7 @@ mod logic;
 
 use eframe::egui;
 use egui::{Align2, Color32, FontId, Pos2, Rect, Stroke, Vec2};
-use logic::{DozenalConverter, DozenalDigit};
+use logic::{DozenalConverter, DozenalDigit, RatExpr, Rational, eval_rational};
 
 #[derive(Clone, Copy, PartialEq)]
 enum CalcToken {
@@ -34,6 +34,9 @@ enum CalcToken {
     Equals,
     Expand,
     Negate, // unary minus in result_buffer; distinct from Sub (binary) to survive re-insertion
+    /// Exact rational literal inserted by Ans / RCL. Carries the value through the pipeline
+    /// so periodicity survives a STO→RCL or Ans re-use roundtrip without precision loss.
+    RatLit(Rational),
     // Overlay Set 6 — Memory
     Sto,
     Rcl,
@@ -63,6 +66,50 @@ enum CalcToken {
     Drg,
     Info,
     Close,
+}
+
+#[derive(Clone, Copy, PartialEq, Default)]
+enum AngleMode {
+    Deg,
+    #[default]
+    Rad,
+    Grad,
+}
+
+impl AngleMode {
+    fn label(self) -> &'static str {
+        match self {
+            AngleMode::Deg => "DEG",
+            AngleMode::Rad => "RAD",
+            AngleMode::Grad => "GRD",
+        }
+    }
+
+    fn next(self) -> Self {
+        match self {
+            AngleMode::Deg => AngleMode::Rad,
+            AngleMode::Rad => AngleMode::Grad,
+            AngleMode::Grad => AngleMode::Deg,
+        }
+    }
+
+    /// Converts an angle from this mode to radians for meval.
+    fn to_rad(self, x: f64) -> f64 {
+        match self {
+            AngleMode::Deg => x.to_radians(),
+            AngleMode::Rad => x,
+            AngleMode::Grad => x * std::f64::consts::PI / 200.0,
+        }
+    }
+
+    /// Converts a result in radians to this mode's unit (for inverse trig).
+    fn rad_to_unit(self, x: f64) -> f64 {
+        match self {
+            AngleMode::Deg => x.to_degrees(),
+            AngleMode::Rad => x,
+            AngleMode::Grad => x * 200.0 / std::f64::consts::PI,
+        }
+    }
 }
 
 // 1. Die Tür für den Desktop (Native)
@@ -110,10 +157,22 @@ fn main() {
 struct DozenalCalcApp {
     input_buffer: Vec<CalcToken>,
     result_buffer: Vec<CalcToken>,
+    // Period metadata — parallel to result_buffer; None when no period or f64 fallback.
+    result_period_start: Option<usize>, // index in result_buffer where the period begins
+    result_period_len: usize,           // digits in period, capped at 5 for display
+    result_period_capped: bool,         // true when the true period exceeds 5 digits
     cursor_pos: usize,
     memory: Vec<CalcToken>,
+    memory_rational: Option<Rational>, // exact value for STO/RCL roundtrip
+    last_ans: Option<Rational>,
+    last_result_f64: f64, // kept for decimal display mode
+    result_cursor_pos: usize,
+    result_field_active: bool, // true after = until next input modifies input_buffer
     error_msg: Option<String>,
     overlay_open: bool,
+    angle_mode: AngleMode,
+    display_dec: bool, // true = show result in decimal; dozenal is the default
+    show_info: bool,
 }
 
 impl Default for DozenalCalcApp {
@@ -121,11 +180,143 @@ impl Default for DozenalCalcApp {
         Self {
             input_buffer: Vec::new(),
             result_buffer: vec![CalcToken::Digit(DozenalDigit::D0)],
+            result_period_start: None,
+            result_period_len: 0,
+            result_period_capped: false,
             cursor_pos: 0,
             memory: Vec::new(),
+            memory_rational: None,
+            last_ans: None,
+            last_result_f64: 0.0,
+            result_cursor_pos: 0,
+            result_field_active: false,
             error_msg: None,
             overlay_open: false,
+            angle_mode: AngleMode::Rad,
+            display_dec: false,
+            show_info: false,
         }
+    }
+}
+
+/// Converts the `input_buffer` token sequence into `RatExpr` atoms for the
+/// rational evaluation track. Returns `None` as soon as a non-rational token
+/// (transcendental function, irrational constant, etc.) is encountered.
+fn build_rat_expr(tokens: &[CalcToken]) -> Option<Vec<RatExpr>> {
+    let mut exprs = Vec::new();
+    let mut i = 0;
+    while i < tokens.len() {
+        match tokens[i] {
+            CalcToken::Digit(_) => {
+                let mut int_d: Vec<DozenalDigit> = Vec::new();
+                let mut frac_d: Vec<DozenalDigit> = Vec::new();
+                let mut in_frac = false;
+                loop {
+                    if i >= tokens.len() {
+                        break;
+                    }
+                    match tokens[i] {
+                        CalcToken::Digit(d) => {
+                            if in_frac {
+                                frac_d.push(d);
+                            } else {
+                                int_d.push(d);
+                            }
+                            i += 1;
+                        }
+                        CalcToken::Decimal if !in_frac => {
+                            in_frac = true;
+                            i += 1;
+                        }
+                        _ => break,
+                    }
+                }
+                let int_val = DozenalConverter::to_decimal_exact(&int_d)?;
+                let int_rat = Rational::new(int_val, 1)?;
+                let rat = if frac_d.is_empty() {
+                    int_rat
+                } else {
+                    let frac_num = DozenalConverter::to_decimal_exact(&frac_d)?;
+                    let frac_den = 12_i128.checked_pow(frac_d.len() as u32)?;
+                    int_rat.add(Rational::new(frac_num, frac_den)?)?
+                };
+                exprs.push(RatExpr::Num(rat));
+            }
+            CalcToken::Decimal => {
+                // Leading decimal point: implicit zero integer part (e.g. ".6")
+                i += 1;
+                let mut frac_d: Vec<DozenalDigit> = Vec::new();
+                while i < tokens.len() {
+                    if let CalcToken::Digit(d) = tokens[i] {
+                        frac_d.push(d);
+                        i += 1;
+                    } else {
+                        break;
+                    }
+                }
+                if frac_d.is_empty() {
+                    return None;
+                }
+                let frac_num = DozenalConverter::to_decimal_exact(&frac_d)?;
+                let frac_den = 12_i128.checked_pow(frac_d.len() as u32)?;
+                exprs.push(RatExpr::Num(Rational::new(frac_num, frac_den)?));
+            }
+            CalcToken::Add => {
+                exprs.push(RatExpr::Add);
+                i += 1;
+            }
+            CalcToken::Sub | CalcToken::Negate => {
+                exprs.push(RatExpr::Sub);
+                i += 1;
+            }
+            CalcToken::Mul => {
+                exprs.push(RatExpr::Mul);
+                i += 1;
+            }
+            CalcToken::Div => {
+                exprs.push(RatExpr::Div);
+                i += 1;
+            }
+            CalcToken::ParenOpen => {
+                exprs.push(RatExpr::LParen);
+                i += 1;
+            }
+            CalcToken::ParenClose => {
+                exprs.push(RatExpr::RParen);
+                i += 1;
+            }
+            CalcToken::ExpTopRight => {
+                exprs.push(RatExpr::Pow);
+                i += 1;
+            }
+            CalcToken::OplusBotLeft => {
+                exprs.push(RatExpr::OPlus);
+                i += 1;
+            }
+            CalcToken::RatLit(r) => {
+                exprs.push(RatExpr::Num(r));
+                i += 1;
+            }
+            _ => return None, // non-rational token → collapse the track
+        }
+    }
+    Some(exprs)
+}
+
+/// Formats an f64 as a decimal string with up to 10 significant digits, trailing zeros removed.
+fn format_decimal_result(val: f64) -> String {
+    if !val.is_finite() {
+        return if val.is_nan() {
+            "NaN".to_string()
+        } else {
+            "∞".to_string()
+        };
+    }
+    let s = format!("{:.10}", val);
+    if s.contains('.') {
+        s.trim_end_matches('0').trim_end_matches('.').to_string()
+    } else {
+        s
     }
 }
 
@@ -135,6 +326,34 @@ impl DozenalCalcApp {
     fn handle_click(&mut self, token: CalcToken) {
         if self.error_msg.is_some() && token != CalcToken::AC {
             return;
+        }
+        // Ans auto-insertion: if we just evaluated (result_field_active) and the user
+        // presses an operator as the first token of a new expression, prepend Ans.
+        let is_operator = matches!(
+            token,
+            CalcToken::Add
+                | CalcToken::Sub
+                | CalcToken::Mul
+                | CalcToken::Div
+                | CalcToken::ExpTopRight
+                | CalcToken::RootTopLeft
+                | CalcToken::OplusBotLeft
+                | CalcToken::LogBotRight
+        );
+        if self.result_field_active && is_operator && self.input_buffer.is_empty() {
+            if let Some(r) = self.last_ans {
+                self.input_buffer.push(CalcToken::RatLit(r));
+            } else {
+                for &t in &self.result_buffer.clone() {
+                    self.input_buffer.push(t);
+                }
+            }
+            self.cursor_pos = self.input_buffer.len();
+        }
+
+        // Any action other than arrows switches activity back to the input field.
+        if !matches!(token, CalcToken::TriangleLeft | CalcToken::TriangleRight) {
+            self.result_field_active = false;
         }
         match token {
             CalcToken::Digit(digit) => {
@@ -146,6 +365,9 @@ impl DozenalCalcApp {
             CalcToken::AC => {
                 self.input_buffer.clear();
                 self.result_buffer = vec![CalcToken::Digit(DozenalDigit::D0)];
+                self.result_period_start = None;
+                self.result_period_len = 0;
+                self.result_period_capped = false;
                 self.cursor_pos = 0;
                 self.error_msg = None;
             }
@@ -156,12 +378,20 @@ impl DozenalCalcApp {
                 }
             }
             CalcToken::TriangleLeft => {
-                if self.cursor_pos > 0 {
+                if self.result_field_active {
+                    if self.result_cursor_pos > 0 {
+                        self.result_cursor_pos -= 1;
+                    }
+                } else if self.cursor_pos > 0 {
                     self.cursor_pos -= 1;
                 }
             }
             CalcToken::TriangleRight => {
-                if self.cursor_pos < self.input_buffer.len() {
+                if self.result_field_active {
+                    if self.result_cursor_pos < self.result_buffer.len() {
+                        self.result_cursor_pos += 1;
+                    }
+                } else if self.cursor_pos < self.input_buffer.len() {
                     self.cursor_pos += 1;
                 }
             }
@@ -174,57 +404,53 @@ impl DozenalCalcApp {
             // Set 6 — Memory
             CalcToken::Sto => {
                 self.memory = self.result_buffer.clone();
+                self.memory_rational = self.last_ans;
                 self.overlay_open = false;
             }
             CalcToken::Rcl => {
                 if !self.memory.is_empty() {
-                    for &m in &self.memory.clone() {
-                        self.input_buffer.insert(self.cursor_pos, m);
+                    if let Some(r) = self.memory_rational {
+                        // Exact rational — insert a single RatLit token
+                        self.input_buffer
+                            .insert(self.cursor_pos, CalcToken::RatLit(r));
                         self.cursor_pos += 1;
+                    } else {
+                        // f64 fallback — insert digit tokens from memory buffer
+                        for &m in &self.memory.clone() {
+                            self.input_buffer.insert(self.cursor_pos, m);
+                            self.cursor_pos += 1;
+                        }
                     }
                 }
                 self.overlay_open = false;
             }
             CalcToken::Mc => {
                 self.memory.clear();
+                self.memory_rational = None;
                 self.overlay_open = false;
             }
             CalcToken::Ans => {
-                for &m in &self.result_buffer.clone() {
-                    self.input_buffer.insert(self.cursor_pos, m);
+                if let Some(r) = self.last_ans {
+                    // Exact rational — insert a single RatLit token
+                    self.input_buffer
+                        .insert(self.cursor_pos, CalcToken::RatLit(r));
                     self.cursor_pos += 1;
+                } else {
+                    // f64 fallback — insert digit tokens from result buffer
+                    for &m in &self.result_buffer.clone() {
+                        self.input_buffer.insert(self.cursor_pos, m);
+                        self.cursor_pos += 1;
+                    }
                 }
                 self.overlay_open = false;
             }
-            // Set 7 — Constants: insert as decimal value tokens
+            // Set 7 — Constants: insert as symbolic token (collapses rational track correctly)
             CalcToken::ConstPi
             | CalcToken::ConstE
             | CalcToken::ConstPhi
             | CalcToken::ConstSqrt2 => {
-                let val: f64 = match token {
-                    CalcToken::ConstPi => std::f64::consts::PI,
-                    CalcToken::ConstE => std::f64::consts::E,
-                    CalcToken::ConstPhi => 1.618_033_988_749_895,
-                    CalcToken::ConstSqrt2 => std::f64::consts::SQRT_2,
-                    _ => unreachable!(),
-                };
-                let int_part = DozenalConverter::from_decimal(val);
-                let frac_part = val - val.floor();
-                for d in int_part {
-                    self.input_buffer
-                        .insert(self.cursor_pos, CalcToken::Digit(d));
-                    self.cursor_pos += 1;
-                }
-                if frac_part > 1e-10 {
-                    self.input_buffer
-                        .insert(self.cursor_pos, CalcToken::Decimal);
-                    self.cursor_pos += 1;
-                    for d in DozenalConverter::frac_to_digits(frac_part, 8) {
-                        self.input_buffer
-                            .insert(self.cursor_pos, CalcToken::Digit(d));
-                        self.cursor_pos += 1;
-                    }
-                }
+                self.input_buffer.insert(self.cursor_pos, token);
+                self.cursor_pos += 1;
                 self.overlay_open = false;
             }
             // Set 9 — Extended: insert as function tokens where applicable
@@ -234,9 +460,19 @@ impl DozenalCalcApp {
                 self.overlay_open = false;
             }
             _ => {
-                // DRG and Info/DozDec are modes — not inserted into buffer
-                if matches!(token, CalcToken::Drg | CalcToken::DozDec | CalcToken::Info) {
-                    // placeholder: mode handling in a later patch
+                // Mode keys — not inserted into buffer
+                if token == CalcToken::Drg {
+                    self.angle_mode = self.angle_mode.next();
+                    self.overlay_open = false;
+                    return;
+                }
+                if token == CalcToken::DozDec {
+                    self.display_dec = !self.display_dec;
+                    self.overlay_open = false;
+                    return;
+                }
+                if token == CalcToken::Info {
+                    self.show_info = true;
                     self.overlay_open = false;
                     return;
                 }
@@ -291,6 +527,34 @@ impl DozenalCalcApp {
                 }
             }
         }
+    }
+
+    /// Returns true when the token just before `cursor_pos` is the same function —
+    /// meaning a second click would toggle to its inverse. Used for the armed marker.
+    fn is_armed(&self, token: CalcToken) -> bool {
+        let invertible = matches!(
+            token,
+            CalcToken::Sin
+                | CalcToken::Cos
+                | CalcToken::Tan
+                | CalcToken::Cot
+                | CalcToken::ArcSin
+                | CalcToken::ArcCos
+                | CalcToken::ArcTan
+                | CalcToken::ArcCot
+                | CalcToken::Sinh
+                | CalcToken::Cosh
+                | CalcToken::Tanh
+                | CalcToken::Coth
+                | CalcToken::ArSinh
+                | CalcToken::ArCosh
+                | CalcToken::ArTanh
+                | CalcToken::ArCoth
+        );
+        if !invertible || self.cursor_pos == 0 {
+            return false;
+        }
+        self.input_buffer[self.cursor_pos - 1] == token
     }
 
     // --- RECHEN-LOGIK ---
@@ -364,7 +628,19 @@ impl DozenalCalcApp {
                         CalcToken::Reciprocal => "recip(",
                         _ => "",
                     };
-                    if !s.is_empty() {
+                    // RatLit and irrational constants push their f64 values directly.
+                    let const_val: Option<f64> = match token {
+                        CalcToken::ConstPi => Some(std::f64::consts::PI),
+                        CalcToken::ConstE => Some(std::f64::consts::E),
+                        CalcToken::ConstPhi => Some(1.618_033_988_749_895),
+                        CalcToken::ConstSqrt2 => Some(std::f64::consts::SQRT_2),
+                        _ => None,
+                    };
+                    if let CalcToken::RatLit(r) = token {
+                        tokens_str.push(r.to_f64().to_string());
+                    } else if let Some(v) = const_val {
+                        tokens_str.push(v.to_string());
+                    } else if !s.is_empty() {
                         tokens_str.push(s.to_string());
                     }
                 }
@@ -434,11 +710,24 @@ impl DozenalCalcApp {
             math_string.push(')');
         }
 
-        // --- HIER STARTET DIE NEUE FEHLERBEHANDLUNG ---
+        // --- Rational track (runs independently of meval) ---
+        let rat_result = build_rat_expr(&self.input_buffer).and_then(|exprs| eval_rational(&exprs));
+
+        // Copy angle mode so the closures can capture it by value (no borrow of self).
+        let am = self.angle_mode;
         let mut ctx = meval::Context::new();
-        ctx.func("cot", |x: f64| 1.0 / x.tan());
-        // Convention A: acot range is (0, π), consistent with acot(x) = π/2 - atan(x).
-        ctx.func("acot", |x: f64| std::f64::consts::FRAC_PI_2 - x.atan());
+        // Angle-mode-aware trig — shadow meval builtins so DRG takes effect.
+        ctx.func("sin", move |x| am.to_rad(x).sin());
+        ctx.func("cos", move |x| am.to_rad(x).cos());
+        ctx.func("tan", move |x| am.to_rad(x).tan());
+        ctx.func("cot", move |x| 1.0 / am.to_rad(x).tan());
+        ctx.func("asin", move |x| am.rad_to_unit(x.asin()));
+        ctx.func("acos", move |x| am.rad_to_unit(x.acos()));
+        ctx.func("atan", move |x| am.rad_to_unit(x.atan()));
+        // Convention A: acot range (0,π), acot(x) = π/2 − atan(x).
+        ctx.func("acot", move |x| {
+            am.rad_to_unit(std::f64::consts::FRAC_PI_2 - x.atan())
+        });
         ctx.func("coth", |x: f64| x.cosh() / x.sinh());
         ctx.func("arsinh", |x: f64| x.asinh());
         ctx.func("arcosh", |x: f64| x.acosh());
@@ -452,36 +741,73 @@ impl DozenalCalcApp {
         ctx.func("recip", |x: f64| 1.0 / x);
         match meval::eval_str_with_context(&math_string, (ctx, meval::builtin())) {
             Ok(result) if result.is_finite() => {
-                self.error_msg = None; // Alles gut, eventuelle alte Fehler löschen
+                self.error_msg = None;
+                self.last_ans = rat_result;
+                self.last_result_f64 = result;
 
-                let mut new_result = Vec::new();
-                let mut val = result;
-                if val < 0.0 {
-                    new_result.push(CalcToken::Negate);
-                    val = val.abs();
-                }
-
-                new_result.extend(
-                    DozenalConverter::from_decimal(val)
-                        .into_iter()
-                        .map(CalcToken::Digit),
-                );
-
-                let frac_part = val - val.floor();
-                if frac_part > 0.000001 {
-                    new_result.push(CalcToken::Decimal);
-                    new_result.extend(
-                        DozenalConverter::frac_to_digits(frac_part, 4)
+                if let Some(r) = rat_result {
+                    // --- Rational track: exact display with possible overline ---
+                    let (int_d, pre_d, period_d) = r.to_dozenal_periodic();
+                    let mut buf: Vec<CalcToken> = Vec::new();
+                    if r.num < 0 {
+                        buf.push(CalcToken::Negate);
+                    }
+                    buf.extend(int_d.into_iter().map(CalcToken::Digit));
+                    if !pre_d.is_empty() || !period_d.is_empty() {
+                        buf.push(CalcToken::Decimal);
+                    }
+                    buf.extend(pre_d.into_iter().map(CalcToken::Digit));
+                    let period_start = if period_d.is_empty() {
+                        None
+                    } else {
+                        Some(buf.len())
+                    };
+                    let period_capped = period_d.len() > 5;
+                    let period_len = period_d.len().min(5);
+                    buf.extend(period_d.into_iter().take(5).map(CalcToken::Digit));
+                    self.result_buffer = buf;
+                    self.result_period_start = period_start;
+                    self.result_period_len = period_len;
+                    self.result_period_capped = period_capped;
+                } else {
+                    // --- f64 fallback: 4 fractional dozenal digits, no overline ---
+                    let mut buf: Vec<CalcToken> = Vec::new();
+                    let mut val = result;
+                    if val < 0.0 {
+                        buf.push(CalcToken::Negate);
+                        val = val.abs();
+                    }
+                    buf.extend(
+                        DozenalConverter::from_decimal(val)
                             .into_iter()
                             .map(CalcToken::Digit),
                     );
+                    let frac_part = val - val.floor();
+                    if frac_part > 0.000001 {
+                        buf.push(CalcToken::Decimal);
+                        buf.extend(
+                            DozenalConverter::frac_to_digits(frac_part, 4)
+                                .into_iter()
+                                .map(CalcToken::Digit),
+                        );
+                    }
+                    self.result_buffer = buf;
+                    self.result_period_start = None;
+                    self.result_period_len = 0;
+                    self.result_period_capped = false;
                 }
-                self.result_buffer = new_result;
+
                 self.input_buffer.clear();
                 self.cursor_pos = 0;
+                self.result_cursor_pos = 0;
+                self.result_field_active = true;
+            }
+            Ok(result) if result.is_nan() => {
+                // NaN comes from out-of-domain inputs (e.g. arcosh(0), artanh(1))
+                self.error_msg = Some("DOMAIN ERROR".to_string());
             }
             Ok(_) => {
-                // Das Ergebnis ist nicht endlich (z.B. Division durch Null)
+                // Infinite result — most likely division by zero
                 self.error_msg = Some("DIV BY ZERO".to_string());
             }
             Err(_) => {
@@ -538,6 +864,13 @@ impl DozenalCalcApp {
                             Color32::LIGHT_BLUE
                         };
                         paint_token(ui, ui.painter(), rect, token, color, 2.0);
+                        if self.is_armed(token) {
+                            ui.painter().circle_filled(
+                                rect.right_top() + Vec2::new(-5.0, 5.0),
+                                3.0,
+                                Color32::GOLD,
+                            );
+                        }
                         if resp.clicked() {
                             self.handle_click(token);
                         }
@@ -624,6 +957,13 @@ impl DozenalCalcApp {
                     color_normal
                 };
                 paint_token(ui, ui.painter(), rect, token, color, 2.0);
+                if app.is_armed(token) {
+                    ui.painter().circle_filled(
+                        rect.right_top() + Vec2::new(-5.0, 5.0),
+                        3.0,
+                        Color32::GOLD,
+                    );
+                }
                 if resp.clicked() {
                     app.handle_click(token);
                 }
@@ -727,12 +1067,11 @@ impl DozenalCalcApp {
         }
     }
 
-    fn draw_overlay(&mut self, ui: &mut egui::Ui, keypad_rect: Rect) {
+    fn draw_overlay(&mut self, ui: &mut egui::Ui, keypad_rect: Rect, is_mobile: bool) {
         // Dim the main keypad
         ui.painter()
             .rect_filled(keypad_rect, 0.0, Color32::from_black_alpha(180));
 
-        // Place the overlay in the same rect as the main keypad
         let sets: [[CalcToken; 4]; 5] = [
             [
                 CalcToken::Sto,
@@ -766,28 +1105,61 @@ impl DozenalCalcApp {
             ],
         ];
 
-        let n_cols = 4usize;
-        let n_rows = 5usize;
         let spacing = 6.0;
-        let btn_w = (keypad_rect.width() - spacing * (n_cols as f32 - 1.0)) / n_cols as f32;
-        let btn_h = (keypad_rect.height() - spacing * (n_rows as f32 - 1.0)) / n_rows as f32;
 
-        for (row_idx, row) in sets.iter().enumerate() {
-            for (col_idx, &token) in row.iter().enumerate() {
-                let x = keypad_rect.left() + col_idx as f32 * (btn_w + spacing);
-                let y = keypad_rect.top() + row_idx as f32 * (btn_h + spacing);
-                let rect = Rect::from_min_size(Pos2::new(x, y), Vec2::new(btn_w, btn_h));
-                let resp = ui.allocate_rect(rect, egui::Sense::click());
-                let color = if resp.is_pointer_button_down_on() {
-                    Color32::LIGHT_RED
-                } else {
-                    Color32::LIGHT_BLUE
-                };
-                paint_token(ui, ui.painter(), rect, token, color, 2.0);
-                if resp.clicked() {
-                    self.handle_click(token);
+        if is_mobile {
+            // Sets 6-9: 4 columns × 4 rows (mirrors the 4-column ops grid in mobile main layout)
+            // Set 10: single row below, like Set 5 in the mobile main layout
+            let btn_w = (keypad_rect.width() - spacing * 3.0) / 4.0;
+            let extra_gap = spacing * 2.0; // extra visual separation before set-10 row
+            // 5 button rows total: 4 for the main grid + 1 for set 10
+            let btn_h = (keypad_rect.height() - spacing * 4.0 - extra_gap) / 5.0;
+
+            for (col_idx, set) in sets[..4].iter().enumerate() {
+                for (row_idx, &token) in set.iter().enumerate() {
+                    let x = keypad_rect.left() + col_idx as f32 * (btn_w + spacing);
+                    let y = keypad_rect.top() + row_idx as f32 * (btn_h + spacing);
+                    let rect = Rect::from_min_size(Pos2::new(x, y), Vec2::new(btn_w, btn_h));
+                    self.paint_overlay_btn(ui, rect, token);
                 }
             }
+            let y10 = keypad_rect.top() + 4.0 * (btn_h + spacing) + extra_gap;
+            for (col_idx, &token) in sets[4].iter().enumerate() {
+                let x = keypad_rect.left() + col_idx as f32 * (btn_w + spacing);
+                let rect = Rect::from_min_size(Pos2::new(x, y10), Vec2::new(btn_w, btn_h));
+                self.paint_overlay_btn(ui, rect, token);
+            }
+        } else {
+            // Desktop: 5 columns × 4 rows — mirrors Sets 1–5 on desktop
+            let btn_w = (keypad_rect.width() - spacing * 4.0) / 5.0;
+            let btn_h = (keypad_rect.height() - spacing * 3.0) / 4.0;
+
+            for (col_idx, set) in sets.iter().enumerate() {
+                for (row_idx, &token) in set.iter().enumerate() {
+                    let x = keypad_rect.left() + col_idx as f32 * (btn_w + spacing);
+                    let y = keypad_rect.top() + row_idx as f32 * (btn_h + spacing);
+                    let rect = Rect::from_min_size(Pos2::new(x, y), Vec2::new(btn_w, btn_h));
+                    self.paint_overlay_btn(ui, rect, token);
+                }
+            }
+        }
+    }
+
+    /// Renders a single overlay button (shared between desktop and mobile overlay).
+    fn paint_overlay_btn(&mut self, ui: &mut egui::Ui, rect: Rect, token: CalcToken) {
+        let resp = ui.allocate_rect(rect, egui::Sense::click());
+        let color = if resp.is_pointer_button_down_on() {
+            Color32::LIGHT_RED
+        } else {
+            Color32::LIGHT_BLUE
+        };
+        paint_token(ui, ui.painter(), rect, token, color, 2.0);
+        if self.is_armed(token) {
+            ui.painter()
+                .circle_filled(rect.right_top() + Vec2::new(-5.0, 5.0), 3.0, Color32::GOLD);
+        }
+        if resp.clicked() {
+            self.handle_click(token);
         }
     }
 }
@@ -816,36 +1188,119 @@ impl eframe::App for DozenalCalcApp {
                     );
                 }
 
+                // Angle mode indicator — top right
+                ui.painter().text(
+                    display_rect.right_top() + Vec2::new(-8.0, 8.0),
+                    Align2::RIGHT_TOP,
+                    self.angle_mode.label(),
+                    FontId::monospace(11.0),
+                    Color32::from_gray(180),
+                );
+                // DEC mode indicator — below angle mode
+                if self.display_dec {
+                    ui.painter().text(
+                        display_rect.right_top() + Vec2::new(-8.0, 22.0),
+                        Align2::RIGHT_TOP,
+                        "DEC",
+                        FontId::monospace(11.0),
+                        Color32::from_rgb(100, 200, 255),
+                    );
+                }
+
                 if self.input_buffer.is_empty() {
-                    let mut x_pos = display_rect.right() - 40.0;
-                    for token in self.result_buffer.iter().rev() {
-                        let rect = Rect::from_center_size(
-                            Pos2::new(x_pos, display_rect.center().y),
-                            Vec2::splat(40.0),
+                    if self.display_dec {
+                        // Decimal display mode: show the f64 result as a plain decimal string.
+                        let val = self
+                            .last_ans
+                            .map(|r| r.to_f64())
+                            .unwrap_or(self.last_result_f64);
+                        let s = format_decimal_result(val);
+                        ui.painter().text(
+                            display_rect.center(),
+                            Align2::CENTER_CENTER,
+                            s,
+                            FontId::monospace(26.0),
+                            Color32::WHITE,
                         );
-                        match token {
-                            CalcToken::Digit(d) => {
-                                paint_dozenal_digit(ui, ui.painter(), rect, *d, Color32::WHITE, 2.5)
+                    } else {
+                        let n = self.result_buffer.len();
+                        // Pre-compute x positions (right-aligned, mirrors the original right-to-left layout)
+                        let mut positions = vec![Pos2::ZERO; n];
+                        {
+                            let mut x = display_rect.right() - 40.0;
+                            for i in (0..n).rev() {
+                                positions[i] = Pos2::new(x, display_rect.center().y);
+                                x -= match self.result_buffer[i] {
+                                    CalcToken::Decimal => 25.0,
+                                    _ => 50.0,
+                                };
                             }
-                            CalcToken::Sub | CalcToken::Negate => {
-                                ui.painter().line_segment(
-                                    [rect.left_center(), rect.right_center()],
-                                    Stroke::new(2.5, Color32::WHITE),
-                                );
-                            }
-                            CalcToken::Decimal => {
-                                ui.painter().circle_filled(
-                                    rect.center_bottom() + Vec2::new(12.0, -5.0),
-                                    3.0,
-                                    Color32::WHITE,
-                                );
-                            }
-                            _ => {}
                         }
-                        x_pos -= match token {
-                            CalcToken::Decimal => 25.0,
-                            _ => 50.0,
-                        };
+                        // Draw overline above period digits (before tokens so digits render on top)
+                        if let Some(ps) = self
+                            .result_period_start
+                            .filter(|&ps| self.result_period_len > 0 && ps < n)
+                        {
+                            {
+                                let last = (ps + self.result_period_len - 1).min(n - 1);
+                                let ox_start = positions[ps].x - 20.0;
+                                let ox_end = positions[last].x + 20.0;
+                                let oy = display_rect.center().y - 23.0;
+                                ui.painter().line_segment(
+                                    [Pos2::new(ox_start, oy), Pos2::new(ox_end, oy)],
+                                    Stroke::new(1.5, Color32::WHITE),
+                                );
+                                if self.result_period_capped {
+                                    ui.painter().text(
+                                        Pos2::new(ox_end + 3.0, display_rect.center().y),
+                                        Align2::LEFT_CENTER,
+                                        "…",
+                                        FontId::monospace(16.0),
+                                        Color32::WHITE,
+                                    );
+                                }
+                            }
+                        }
+                        // Draw result cursor when result field is active
+                        if self.result_field_active && n > 0 {
+                            let rcp = self.result_cursor_pos.min(n - 1);
+                            let cx = positions[rcp].x - 20.0;
+                            ui.painter().line_segment(
+                                [
+                                    Pos2::new(cx, display_rect.center().y - 15.0),
+                                    Pos2::new(cx, display_rect.center().y + 15.0),
+                                ],
+                                Stroke::new(2.0, Color32::RED),
+                            );
+                        }
+                        // Draw tokens
+                        for (idx, token) in self.result_buffer.iter().enumerate() {
+                            let rect = Rect::from_center_size(positions[idx], Vec2::splat(40.0));
+                            match token {
+                                CalcToken::Digit(d) => paint_dozenal_digit(
+                                    ui,
+                                    ui.painter(),
+                                    rect,
+                                    *d,
+                                    Color32::WHITE,
+                                    2.5,
+                                ),
+                                CalcToken::Sub | CalcToken::Negate => {
+                                    ui.painter().line_segment(
+                                        [rect.left_center(), rect.right_center()],
+                                        Stroke::new(2.5, Color32::WHITE),
+                                    );
+                                }
+                                CalcToken::Decimal => {
+                                    ui.painter().circle_filled(
+                                        rect.center_bottom() + Vec2::new(12.0, -5.0),
+                                        3.0,
+                                        Color32::WHITE,
+                                    );
+                                }
+                                _ => {}
+                            }
+                        }
                     }
                 } else {
                     let mut x_pos = display_rect.left() + 30.0;
@@ -900,7 +1355,24 @@ impl eframe::App for DozenalCalcApp {
                                         CalcToken::ArcCot => "cot⁻¹",
                                         CalcToken::Expand => "…",
                                         CalcToken::Decimal => ".",
-                                        _ => "Op",
+                                        CalcToken::RatLit(_) => "Ans",
+                                        CalcToken::ConstPi => "π",
+                                        CalcToken::ConstE => "e",
+                                        CalcToken::ConstPhi => "φ",
+                                        CalcToken::ConstSqrt2 => "√2",
+                                        CalcToken::Sinh => "sinh",
+                                        CalcToken::Cosh => "cosh",
+                                        CalcToken::Tanh => "tanh",
+                                        CalcToken::Coth => "coth",
+                                        CalcToken::ArSinh => "sinh⁻¹",
+                                        CalcToken::ArCosh => "cosh⁻¹",
+                                        CalcToken::ArTanh => "tanh⁻¹",
+                                        CalcToken::ArCoth => "coth⁻¹",
+                                        CalcToken::Factorial => "n!",
+                                        CalcToken::AbsVal => "|x|",
+                                        CalcToken::Reciprocal => "1/x",
+                                        CalcToken::Mod => "mod",
+                                        _ => "?",
                                     };
                                     ui.painter().text(
                                         rect.center(),
@@ -913,12 +1385,24 @@ impl eframe::App for DozenalCalcApp {
                                         CalcToken::ArcSin
                                         | CalcToken::ArcCos
                                         | CalcToken::ArcTan
-                                        | CalcToken::ArcCot => 65.0,
+                                        | CalcToken::ArcCot
+                                        | CalcToken::ArSinh
+                                        | CalcToken::ArCosh
+                                        | CalcToken::ArTanh
+                                        | CalcToken::ArCoth => 65.0,
                                         CalcToken::Sin
                                         | CalcToken::Cos
                                         | CalcToken::Tan
                                         | CalcToken::Cot
-                                        | CalcToken::LogBotRight => 45.0,
+                                        | CalcToken::Sinh
+                                        | CalcToken::Cosh
+                                        | CalcToken::Tanh
+                                        | CalcToken::Coth
+                                        | CalcToken::LogBotRight
+                                        | CalcToken::RatLit(_)
+                                        | CalcToken::ConstSqrt2
+                                        | CalcToken::Reciprocal
+                                        | CalcToken::Mod => 45.0,
                                         _ => 30.0,
                                     };
                                 }
@@ -951,10 +1435,53 @@ impl eframe::App for DozenalCalcApp {
                         Pos2::new(ui.min_rect().left(), keypad_top),
                         ui.min_rect().right_bottom(),
                     );
-                    self.draw_overlay(ui, keypad_rect);
+                    self.draw_overlay(ui, keypad_rect, is_mobile);
                 }
             });
         });
+
+        // Info modal — rendered outside the CentralPanel so it floats above
+        if self.show_info {
+            let mut open = self.show_info;
+            egui::Window::new("Dozenal — Why base 12?")
+                .open(&mut open)
+                .resizable(false)
+                .collapsible(false)
+                .vscroll(true)
+                .default_width(340.0)
+                .show(ctx, |ui| {
+                    ui.label(egui::RichText::new("Why base 12?").strong());
+                    ui.add_space(4.0);
+                    ui.label("12 has more divisors (1, 2, 3, 4, 6, 12) than any smaller integer — that's what \"highly composite\" means. Base 10 only has 1, 2, 5, 10.");
+                    ui.add_space(4.0);
+                    ui.label("12 is also the smallest abundant number: the sum of its proper divisors (1+2+3+4+6 = 16) exceeds 12 itself.");
+                    ui.add_space(8.0);
+                    ui.label(egui::RichText::new("Short fractions in base 12").strong());
+                    ui.add_space(4.0);
+                    ui.label("1/2 = 0.6      1/3 = 0.4\n1/4 = 0.3      1/6 = 0.2\n1/8 = 0.16     1/9 = 0.14");
+                    ui.add_space(4.0);
+                    ui.label("Compare base 10, where 1/3 = 0.333… and 1/6 = 0.1666…");
+                    ui.add_space(8.0);
+                    ui.label(egui::RichText::new("Periodic fractions (base 12)").strong());
+                    ui.add_space(4.0);
+                    ui.label("1/5  = 0.[2497]         period 4\n1/7  = 0.[186A35]       period 6\n1/B  = 0.[1]            period 1\n1/11 = 0.[0A35186]…     period 6");
+                    ui.add_space(4.0);
+                    ui.label("The overline over a digit group means it repeats infinitely. A trailing … means the period was longer than 5 digits.");
+                    ui.add_space(8.0);
+                    ui.label(egui::RichText::new("Constants in base 12 (first 14 digits)").strong());
+                    ui.add_space(4.0);
+                    ui.label("π  ≈ 3.184809493B9186…\ne  ≈ 2.875236069821…\nφ  ≈ 1.74BB6772802A4…\n√2 ≈ 1.4B79170A07B85…");
+                    ui.add_space(8.0);
+                    ui.label(egui::RichText::new("F(12) = 144 = 12²").strong());
+                    ui.add_space(4.0);
+                    ui.label("The 12th Fibonacci number is 144 — the only Fibonacci number that is a perfect square besides F(1) = F(2) = 1 (proven by Cohn, 1964).");
+                    ui.add_space(8.0);
+                    ui.label(egui::RichText::new("Usage hints").strong());
+                    ui.add_space(4.0);
+                    ui.label("• Double-click sin/cos/tan/cot for their inverses.\n• Double-click sinh/cosh/tanh/coth (overlay) for inverses.\n• ◀ ▶ move the cursor inside the input expression.\n• Doz↔Dec (overlay) toggles the result display between dozenal and decimal.\n• DRG (overlay) cycles Rad → Grad → Deg → Rad.");
+                });
+            self.show_info = open;
+        }
     }
 }
 
@@ -1129,7 +1656,7 @@ fn paint_token(
                 CalcToken::DozDec => "Doz",
                 CalcToken::Drg => "DRG",
                 CalcToken::Info => "Info",
-                CalcToken::Close => "✕",
+                CalcToken::Close => "…",
                 _ => "",
             };
             // Auch die anderen Texte (wie "sin", "cos") passen sich jetzt an den Button an

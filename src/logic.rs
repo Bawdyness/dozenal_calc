@@ -57,6 +57,17 @@ impl DozenalDigit {
 pub struct DozenalConverter;
 
 impl DozenalConverter {
+    /// Exact integer conversion via Horner's method. Returns `None` on i128 overflow.
+    pub fn to_decimal_exact(digits: &[DozenalDigit]) -> Option<i128> {
+        let mut result: i128 = 0;
+        for digit in digits {
+            result = result
+                .checked_mul(12)?
+                .checked_add(digit.to_value() as i128)?;
+        }
+        Some(result)
+    }
+
     // Macht aus einer Liste von Ziffern eine Dezimalzahl
     // Beispiel: [D1, D0] -> 1 * 12^1 + 0 * 12^0 = 12
     pub fn to_decimal(digits: &[DozenalDigit]) -> f64 {
@@ -219,8 +230,6 @@ impl Rational {
         product.div(sum)
     }
 
-    // Used by the parallel evaluation track in main.rs (Step 4).
-    #[allow(dead_code)]
     pub fn to_f64(self) -> f64 {
         self.num as f64 / self.den as f64
     }
@@ -270,6 +279,140 @@ impl Rational {
             if let Some(d) = DozenalDigit::from_value(digit_val) {
                 frac_digits.push(d);
             }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rational expression evaluator
+// ---------------------------------------------------------------------------
+
+/// Flat token stream for the rational evaluation track.
+/// `main.rs` converts `input_buffer` into this before calling `eval_rational`.
+#[derive(Clone, Copy, Debug)]
+pub enum RatExpr {
+    Num(Rational),
+    Add,
+    Sub, // also used for unary minus
+    Mul,
+    Div,
+    Pow,
+    OPlus,
+    LParen,
+    RParen,
+}
+
+/// Evaluates a `RatExpr` token sequence as an arithmetic expression.
+/// Returns `None` if the expression is malformed, overflows, or uses a
+/// non-integer exponent (which would make the result irrational).
+pub fn eval_rational(exprs: &[RatExpr]) -> Option<Rational> {
+    let mut p = RatParser { exprs, pos: 0 };
+    let result = p.parse_add_sub()?;
+    if p.pos == exprs.len() {
+        Some(result)
+    } else {
+        None // unconsumed tokens → malformed expression
+    }
+}
+
+struct RatParser<'a> {
+    exprs: &'a [RatExpr],
+    pos: usize,
+}
+
+impl<'a> RatParser<'a> {
+    fn peek(&self) -> Option<RatExpr> {
+        self.exprs.get(self.pos).copied()
+    }
+
+    // Level 1 (lowest): + and -
+    fn parse_add_sub(&mut self) -> Option<Rational> {
+        let mut left = self.parse_mul_div()?;
+        loop {
+            match self.peek() {
+                Some(RatExpr::Add) => {
+                    self.pos += 1;
+                    left = left.add(self.parse_mul_div()?)?;
+                }
+                Some(RatExpr::Sub) => {
+                    self.pos += 1;
+                    left = left.sub(self.parse_mul_div()?)?;
+                }
+                _ => break,
+            }
+        }
+        Some(left)
+    }
+
+    // Level 2: *, /, ⊕ (same precedence, left-associative)
+    fn parse_mul_div(&mut self) -> Option<Rational> {
+        let mut left = self.parse_pow()?;
+        loop {
+            match self.peek() {
+                Some(RatExpr::Mul) => {
+                    self.pos += 1;
+                    left = left.mul(self.parse_pow()?)?;
+                }
+                Some(RatExpr::Div) => {
+                    self.pos += 1;
+                    left = left.div(self.parse_pow()?)?;
+                }
+                Some(RatExpr::OPlus) => {
+                    self.pos += 1;
+                    left = left.oplus(self.parse_pow()?)?;
+                }
+                _ => break,
+            }
+        }
+        Some(left)
+    }
+
+    // Level 3: unary +/- and right-associative ^
+    fn parse_pow(&mut self) -> Option<Rational> {
+        match self.peek() {
+            Some(RatExpr::Sub) => {
+                self.pos += 1;
+                let val = self.parse_pow()?;
+                return val.mul(Rational::new(-1, 1)?);
+            }
+            Some(RatExpr::Add) => {
+                self.pos += 1;
+                return self.parse_pow();
+            }
+            _ => {}
+        }
+        let base = self.parse_primary()?;
+        if matches!(self.peek(), Some(RatExpr::Pow)) {
+            self.pos += 1;
+            let exp = self.parse_pow()?; // right-associative recursion
+            if exp.den != 1 {
+                return None; // fractional exponent → irrational, collapse track
+            }
+            let e = i32::try_from(exp.num).ok()?;
+            base.pow(e)
+        } else {
+            Some(base)
+        }
+    }
+
+    // Level 4 (highest): literals and parenthesised sub-expressions
+    fn parse_primary(&mut self) -> Option<Rational> {
+        match self.peek()? {
+            RatExpr::Num(r) => {
+                self.pos += 1;
+                Some(r)
+            }
+            RatExpr::LParen => {
+                self.pos += 1;
+                let val = self.parse_add_sub()?;
+                if matches!(self.peek(), Some(RatExpr::RParen)) {
+                    self.pos += 1;
+                    Some(val)
+                } else {
+                    None // unmatched paren
+                }
+            }
+            _ => None,
         }
     }
 }
@@ -448,5 +591,114 @@ mod tests {
         assert_eq!(period[3], DozenalDigit::D10); // A
         assert_eq!(period[4], DozenalDigit::D3);
         assert_eq!(period[5], DozenalDigit::D5);
+    }
+
+    // --- to_decimal_exact ---
+
+    #[test]
+    fn to_decimal_exact_basic() {
+        assert_eq!(DozenalConverter::to_decimal_exact(&[]), Some(0));
+        assert_eq!(
+            DozenalConverter::to_decimal_exact(&[DozenalDigit::D1, DozenalDigit::D0]),
+            Some(12)
+        );
+        assert_eq!(
+            DozenalConverter::to_decimal_exact(&[DozenalDigit::D1, DozenalDigit::D1]),
+            Some(13)
+        );
+    }
+
+    // --- eval_rational ---
+
+    fn r(n: i128, d: i128) -> RatExpr {
+        RatExpr::Num(Rational::new(n, d).unwrap())
+    }
+
+    #[test]
+    fn eval_add() {
+        // 1/2 + 1/3 = 5/6
+        let exprs = [r(1, 2), RatExpr::Add, r(1, 3)];
+        let result = eval_rational(&exprs).unwrap();
+        assert_eq!(result.num, 5);
+        assert_eq!(result.den, 6);
+    }
+
+    #[test]
+    fn eval_sub() {
+        // 3/4 - 1/4 = 1/2
+        let exprs = [r(3, 4), RatExpr::Sub, r(1, 4)];
+        let result = eval_rational(&exprs).unwrap();
+        assert_eq!(result.num, 1);
+        assert_eq!(result.den, 2);
+    }
+
+    #[test]
+    fn eval_mul_div_precedence() {
+        // 1 + 2 * 3 = 7 (mul before add)
+        let exprs = [r(1, 1), RatExpr::Add, r(2, 1), RatExpr::Mul, r(3, 1)];
+        let result = eval_rational(&exprs).unwrap();
+        assert_eq!(result, Rational::new(7, 1).unwrap());
+    }
+
+    #[test]
+    fn eval_pow() {
+        // 2^10 = 1024
+        let exprs = [r(2, 1), RatExpr::Pow, r(10, 1)];
+        let result = eval_rational(&exprs).unwrap();
+        assert_eq!(result, Rational::new(1024, 1).unwrap());
+    }
+
+    #[test]
+    fn eval_pow_fraction_collapses() {
+        // 4^(1/2) — fractional exponent must collapse to None
+        let exprs = [
+            r(4, 1),
+            RatExpr::Pow,
+            RatExpr::LParen,
+            r(1, 1),
+            RatExpr::Div,
+            r(2, 1),
+            RatExpr::RParen,
+        ];
+        assert!(eval_rational(&exprs).is_none());
+    }
+
+    #[test]
+    fn eval_unary_minus() {
+        // -5 + 3 = -2
+        let exprs = [RatExpr::Sub, r(5, 1), RatExpr::Add, r(3, 1)];
+        let result = eval_rational(&exprs).unwrap();
+        assert_eq!(result, Rational::new(-2, 1).unwrap());
+    }
+
+    #[test]
+    fn eval_parens() {
+        // (1 + 2) * 4 = 12
+        let exprs = [
+            RatExpr::LParen,
+            r(1, 1),
+            RatExpr::Add,
+            r(2, 1),
+            RatExpr::RParen,
+            RatExpr::Mul,
+            r(4, 1),
+        ];
+        let result = eval_rational(&exprs).unwrap();
+        assert_eq!(result, Rational::new(12, 1).unwrap());
+    }
+
+    #[test]
+    fn eval_oplus() {
+        // 2 ⊕ 3 = (2*3)/(2+3) = 6/5
+        let exprs = [r(2, 1), RatExpr::OPlus, r(3, 1)];
+        let result = eval_rational(&exprs).unwrap();
+        assert_eq!(result.num, 6);
+        assert_eq!(result.den, 5);
+    }
+
+    #[test]
+    fn eval_div_by_zero_collapses() {
+        let exprs = [r(1, 1), RatExpr::Div, r(0, 1)];
+        assert!(eval_rational(&exprs).is_none());
     }
 }

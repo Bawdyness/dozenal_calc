@@ -1,0 +1,27 @@
+# clippy.toml — configuration for cargo clippy
+#
+# This file tunes clippy's behavior for the dozenal_calc project.
+# Strict lint enforcement is configured via Cargo.toml [lints] section.
+# This file holds clippy-specific thresholds and exceptions.
+
+# Cognitive complexity threshold per function.
+# Default is 25; we set it slightly stricter to keep functions small.
+cognitive-complexity-threshold = 20
+
+# Maximum number of arguments a function should take before clippy warns.
+# Default is 7; we set it to 6 to encourage struct-based parameter grouping.
+too-many-arguments-threshold = 6
+
+# Maximum number of lines for a function before clippy warns.
+# Default is 100; we keep it but note that egui paint functions may legitimately exceed.
+too-many-lines-threshold = 100
+
+# Disallow `dbg!` macros in committed code (they're for local debugging only).
+disallowed-macros = [
+    { path = "std::dbg", reason = "dbg! is for local debugging — remove before commit" },
+]
+
+# Allow these names in match arms and short scopes — they're idiomatic in egui code.
+# (egui examples use `c` for center, `s` for stroke, `p` for painter throughout.)
+# This keeps clippy from flagging the existing paint_token / paint_dozenal_digit style.
+allowed-idents-below-min-chars = ["c", "s", "p", "q", "r", "x", "y", "i", "n"]

@@ -1656,7 +1656,7 @@ fn paint_token(
                 CalcToken::DozDec => "Doz",
                 CalcToken::Drg => "DRG",
                 CalcToken::Info => "Info",
-                CalcToken::Close => "✕",
+                CalcToken::Close => "…",
                 _ => "",
             };
             // Auch die anderen Texte (wie "sin", "cos") passen sich jetzt an den Button an

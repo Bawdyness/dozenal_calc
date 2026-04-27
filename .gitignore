@@ -1,2 +1,8 @@
 /target
+/dist
 Cargo.lock
+CLAUDE.md
+DESIGN_NOTES.md
+INFO_MODAL_CONTENT.md
+CODE_QUALITY_SESSION.md
+Cargo_toml_lints_section.md

@@ -1491,7 +1491,8 @@ impl eframe::App for DozenalCalcApp {
                 ui.add_space(20.0);
 
                 // --- DER NEUE RESPONSIVE SCHALTER ---
-                let is_mobile = ctx.screen_rect().width() < 500.0;
+                const MOBILE_BREAKPOINT_PX: f32 = 500.0;
+                let is_mobile = ctx.screen_rect().width() < MOBILE_BREAKPOINT_PX;
                 let keypad_top = ui.cursor().top();
                 if is_mobile {
                     self.draw_mobile_layout(ui);

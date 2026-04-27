@@ -93,11 +93,11 @@ Likely answer: toggle is a *display* layer, not an input-mode change. Internal s
 
 ### 4. Info Modal — UI and content
 
-✅ Resolved. UI is an accordion (collapsible list), not a scrolling text wall. Two sections ("Bedienung" with 7 entries, "Warum Dozenal?" with 5 entries), only one entry open at a time. Complete text in `INFO_MODAL_CONTENT.md`. Hard limit of 12 entries. Full spec in `CLAUDE.md` under "The Info Modal (10.3)".
+✅ Resolved. Navigation is List → Detail → Back: tapping "Info" shows 12 chapter titles; tapping a title opens the full chapter text (scrollable); a back button returns to the list. Complete text in `INFO_MODAL_CONTENT.md`. Hard limit of 12 chapters. Full spec in `CLAUDE.md` under "The Info Modal (10.3)".
 
 ### 5. Hyperbolic domain errors
 
-`arcosh(x)` requires `x ≥ 1`, `artanh(x)` and `arcoth(x)` have domain restrictions on `|x|` relative to 1. When the user enters out-of-domain values, the f64 path produces NaN. The error message should be user-friendly (e.g. `"DOMAIN ERROR"` rather than letting NaN propagate visibly). Confirm this matches the existing error-message style.
+✅ Resolved. Out-of-domain inputs (e.g. `arcosh(0)`, `artanh(1)`) produce NaN via the f64 path; `calculate_result()` catches this and sets `error_msg = Some("DOMAIN ERROR")`. Matches the existing error-message style.
 
 ## Ideas parked for later
 
@@ -141,23 +141,19 @@ This project uses a parallel workflow:
 
 When a decision is finalized in chat, it should be moved into `CLAUDE.md` and removed from this file's "open questions" section.
 
-## Patch order (when implementation starts)
+## Patch order — ✅ all 14 steps completed
 
-The user has chosen "all together at the end" rather than incremental fixes. Now that the overlay design and the periodic-decimal feature are finalized, the implementation order is:
-
-1. **Overlay infrastructure**: replace `MPlus` token with `Expand`, add `overlay_open` state, add `Close` token, add overlay drawing routine that mirrors the 5-set layout with Sets 6–10 and dims the main keypad. **Known bug to fix here**: the current overlay implementation arranges sets horizontally on both desktop and mobile. The correct behavior is identical to the main keypad — sets vertical on desktop, sets 6–9 vertical + set 10 horizontal below on mobile. See `CLAUDE.md` "Expansion overlay" for the precise requirement.
-2. **`Rational` type and rational arithmetic** in `logic.rs`. Unit tests for finite vs. periodic detection, overflow handling, divide-by-zero.
-3. **Period detection algorithm** in `logic.rs`. Unit tests with the periodic fractions from the curiosities list.
-4. **Parallel evaluation track** in `calculate_result()`: alongside the existing meval call, walk the `input_buffer` with the rational evaluator. Store both results.
-5. **Overline rendering** in `main.rs`: extension of the result display to draw the overline above the period digits, with the `…` continuation marker for capped periods.
-6. **Set 6 (Memory)**: STO, RCL, MC, Ans logic. Memory carries `Rational` when available.
-7. **Set 7 (Constants)**: π, e, φ, √2. These collapse the rational track but produce f64 values.
-8. **Set 8 (Hyperbolic)**: sinh, cosh, tanh, coth, with double-click inverses. Domain error handling for arcosh, artanh, arcoth.
-9. **Set 9 (Extended)**: n!, |x|, 1/x, mod. n! and |x| can be implemented as custom meval functions; mod uses meval's `%`; 1/x is just `1/(...)`.
-10. **Set 10 (Modes & Meta)**: Doz↔Dec toggle, DRG cycle, Info modal, Close.
-11. **Cursor activity model**: refactor `◀`/`▶` handling to operate on the active field (input before `=`, result after `=`, input after new entry).
-12. **Ans auto-insertion** after `=` for operator-first continuations.
-13. **Inverse-armed visual marker** for double-click affordance (Set 3 and Set 8).
-14. **Info Modal content**: write the didactic text, build the modal UI.
-
-Each step verified locally with `cargo run` and `trunk serve` before merge. The full quality triple (`fmt`, `clippy`, `test`) runs after every step.
+1. ✅ Overlay infrastructure
+2. ✅ `Rational` type and rational arithmetic
+3. ✅ Period detection algorithm
+4. ✅ Parallel evaluation track
+5. ✅ Overline rendering
+6. ✅ Set 6 (Memory)
+7. ✅ Set 7 (Constants)
+8. ✅ Set 8 (Hyperbolic) + domain errors
+9. ✅ Set 9 (Extended)
+10. ✅ Set 10 (Modes & Meta)
+11. ✅ Cursor activity model
+12. ✅ Ans auto-insertion
+13. ✅ Inverse-armed visual marker
+14. ✅ Info Modal content

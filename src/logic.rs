@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+// Copyright (c) 2026 Eric Naville
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DozenalDigit {
     D0,

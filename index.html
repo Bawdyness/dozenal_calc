@@ -23,6 +23,16 @@
               display: block;
           }
       </style>
+        <script>
+          // Prevent browser defaults (back-navigation, quick-find, scrolling) for keys
+          // used by the calculator. Checked by symbol (e.key), not physical key code,
+          // so layout-independent: "/" matches Shift+7 on Swiss keyboards etc.
+          document.addEventListener('keydown', function(e) {
+            var used = ['Backspace', 'Enter', 'Escape',
+                        'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', '/'];
+            if (used.includes(e.key)) e.preventDefault();
+          }, true);
+        </script>
     </head>
     <body>
         <canvas id="the_canvas_id"></canvas>

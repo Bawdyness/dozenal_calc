@@ -1238,6 +1238,19 @@ impl DozenalCalcApp {
 impl eframe::App for DozenalCalcApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.handle_keyboard(ctx);
+        egui::TopBottomPanel::bottom("footer").show(ctx, |ui| {
+            ui.add_space(4.0);
+            ui.centered_and_justified(|ui| {
+                ui.label(
+                    egui::RichText::new(
+                        "© 2026 Eric Naville \u{00b7} PolyForm Noncommercial License 1.0.0",
+                    )
+                    .size(10.0)
+                    .color(egui::Color32::from_gray(120)),
+                );
+            });
+            ui.add_space(4.0);
+        });
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.vertical_centered(|ui| {
                 ui.heading("Dozenal Calc");

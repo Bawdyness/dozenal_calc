@@ -1170,11 +1170,71 @@ impl DozenalCalcApp {
             self.handle_click(token);
         }
     }
+
+    fn handle_keyboard(&mut self, ctx: &egui::Context) {
+        // Collect tokens to dispatch outside the closure (borrow-checker)
+        let mut tokens: Vec<CalcToken> = Vec::new();
+        ctx.input(|i| {
+            for event in &i.events {
+                match event {
+                    egui::Event::Text(s) if !i.modifiers.ctrl && !i.modifiers.mac_cmd => {
+                        for ch in s.chars() {
+                            let t = match ch {
+                                '0' => Some(CalcToken::Digit(DozenalDigit::D0)),
+                                '1' => Some(CalcToken::Digit(DozenalDigit::D1)),
+                                '2' => Some(CalcToken::Digit(DozenalDigit::D2)),
+                                '3' => Some(CalcToken::Digit(DozenalDigit::D3)),
+                                '4' => Some(CalcToken::Digit(DozenalDigit::D4)),
+                                '5' => Some(CalcToken::Digit(DozenalDigit::D5)),
+                                '6' => Some(CalcToken::Digit(DozenalDigit::D6)),
+                                '7' => Some(CalcToken::Digit(DozenalDigit::D7)),
+                                '8' => Some(CalcToken::Digit(DozenalDigit::D8)),
+                                '9' => Some(CalcToken::Digit(DozenalDigit::D9)),
+                                'a' | 'A' => Some(CalcToken::Digit(DozenalDigit::D10)),
+                                'b' | 'B' => Some(CalcToken::Digit(DozenalDigit::D11)),
+                                '+' => Some(CalcToken::Add),
+                                '-' => Some(CalcToken::Sub),
+                                '*' => Some(CalcToken::Mul),
+                                '/' => Some(CalcToken::Div),
+                                '^' => Some(CalcToken::ExpTopRight),
+                                '.' => Some(CalcToken::Decimal),
+                                '=' => Some(CalcToken::Equals),
+                                _ => None,
+                            };
+                            if let Some(t) = t {
+                                tokens.push(t);
+                            }
+                        }
+                    }
+                    egui::Event::Key {
+                        key, pressed: true, ..
+                    } => {
+                        let t = match key {
+                            egui::Key::Enter => Some(CalcToken::Equals),
+                            egui::Key::Backspace => Some(CalcToken::Del),
+                            egui::Key::Escape => Some(CalcToken::AC),
+                            egui::Key::ArrowLeft => Some(CalcToken::TriangleLeft),
+                            egui::Key::ArrowRight => Some(CalcToken::TriangleRight),
+                            _ => None,
+                        };
+                        if let Some(t) = t {
+                            tokens.push(t);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        });
+        for t in tokens {
+            self.handle_click(t);
+        }
+    }
 }
 
 // --- HAUPT-UPDATE SCHLEIFE (Das Fenster) ---
 impl eframe::App for DozenalCalcApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.handle_keyboard(ctx);
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.vertical_centered(|ui| {
                 ui.heading("Dozenal Calc");

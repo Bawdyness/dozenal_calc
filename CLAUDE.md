@@ -168,13 +168,36 @@ Close lives in position 10.4 — there is no separate full-width bar in the over
 
 ### The Info Modal (10.3)
 
-Position 10.3 opens an info modal containing didactic content about dozenality. The modal is a self-contained UI element, **not** a second overlay with keys. It contains:
-- Mathematical curiosities specific to base 12 (F(12) = 144 = 12², highly composite, abundant, short fractions)
-- Selected constants in base 12 with their first ~14 digits
-- Brief usage hints (double-click for inverses, cursor navigation)
-- A close button
+Position 10.3 opens the info area — a self-contained didactic section about dozenality, separate from the calculator. It is **not** a second overlay with keys.
 
-The modal scrolls vertically if content exceeds viewport height. It has no calculator buttons — it is a reading surface, not an interactive layer.
+**Structure**: List → Detail → Back. Tapping "Info" shows a **list of 12 chapter titles**, vertically stacked. Tapping a title opens the **detail view** for that chapter (scrollable, full area). A back button in the top-left corner returns to the chapter list.
+
+**Chapters** (12 total, fixed — no growth beyond this):
+1. Bedienung des Rechners (symbol system, controls, periodicity display)
+2. Was ist das Dozenalsystem? (definition, advantages, history)
+3. Fibonacci, Quadratzahlen und andere Kuriositäten (F(12)=144, φ, Ramanujan)
+4. Das Zwölfeck — Grundlagen (construction, symmetry, contained polygons)
+5. Das Zwölfeck — Winkel und Diagonalen (54 diagonals, exact lengths, 15°-grid)
+6. Das Zwölfeck — Flächen und Verhältnisse (area formulas, π-approximation)
+7. Der Dodekaeder — zwölf Fünfecke im Raum (description, Platonic solids, Euler)
+8. Der Dodekaeder — φ, Dualität und Symmetrie (golden ratio, icosahedron duality)
+9. Zwölf Tierkreiszeichen und der Himmel (Babylonian astronomy, calendar)
+10. Zwölf Flächen in Kristallen und Lebewesen (pyrite, garnet, radiolaria)
+11. Zwölf Glieder an der Hand (phalanx counting, anatomy)
+12. Zoll, Fuss, Pfund — und warum sie dozenal Sinn ergeben (imperial units, TGM)
+
+**Content source**: see `INFO_MODAL_CONTENT.md` in the repository root for the complete text of all 12 chapters.
+
+**Language**: German.
+
+**Visual rules**:
+- The chapter list is clean and spacious — each title is a tappable row.
+- The detail view is deliberately **not** minimalist: it may contain prose paragraphs, tables, and optionally simple SVG illustrations (geometric drawings). This is a reading surface, not a calculator interface.
+- Tables use monospace or tabular alignment so decimal places line up.
+- Dozenal digits in the info text use alphanumeric notation (A, B) rather than the custom symbols — the info area is a reading context, not a calculation context.
+- Mathematical formulas are rendered as Unicode text (e.g. `A = 3s²(2+√3)`), not LaTeX.
+- Each chapter should fit in 2–3 mobile screen heights (~400–600 words). Longer chapters are trimmed, not split.
+- A back button returns from the detail view to the chapter list. From the chapter list, a close button returns to the overlay.
 
 ## Interaction Conventions
 

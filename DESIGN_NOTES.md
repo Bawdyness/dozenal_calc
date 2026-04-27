@@ -91,16 +91,9 @@ Set 10.1 toggles between dozenal and decimal display. Open:
 
 Likely answer: toggle is a *display* layer, not an input-mode change. Internal storage is always exact (f64 + Rational); display rendering is base-aware. This implies the dozenal-only digit keys remain active and produce the same internal value regardless of display mode. To be confirmed.
 
-### 4. Info Modal contents
+### 4. Info Modal — UI and content
 
-The modal exists, but its content is unwritten. Candidates:
-- Mathematical curiosities (F(12) = 144 = 12², highly composite, abundant, short fractions).
-- Periodic-fraction table for small denominators (1/5 has period 4, 1/7 has period 6, 1/B has period 1, etc.).
-- Constants in base 12 with first ~14 digits.
-- Brief usage hints (double-click, cursor navigation, overline meaning).
-- Reference to the Doz↔Dec toggle for verification.
-
-To be drafted as a separate text content task. The visual layout of the modal (single column, sections with headers, monospace for digit strings) is straightforward and can be decided at implementation time.
+✅ Resolved. UI is an accordion (collapsible list), not a scrolling text wall. Two sections ("Bedienung" with 7 entries, "Warum Dozenal?" with 5 entries), only one entry open at a time. Complete text in `INFO_MODAL_CONTENT.md`. Hard limit of 12 entries. Full spec in `CLAUDE.md` under "The Info Modal (10.3)".
 
 ### 5. Hyperbolic domain errors
 

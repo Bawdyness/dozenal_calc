@@ -230,7 +230,7 @@ pub fn draw_info_chapter(ui: &mut egui::Ui, chapter: usize) {
             );
             info_pre(
                 ui,
-                "  Typ      Überspringt   Länge (exakt)      Näherung\n  s (Seite)  —           1                  1.000\n  d₂         1 Ecke      \u{221a}(2+\u{221a}3)           1.932\n  d₃         2 Ecken     1+\u{221a}3              2.732\n  d₄         3 Ecken     (3\u{221a}2+\u{221a}6)/2       3.346\n  d₅         4 Ecken     2+\u{221a}3              3.732\n  d₆ (⌀)    5 Ecken     \u{221a}6+\u{221a}2             3.864",
+                "  Typ        Überspringt  Länge (exakt)\n  s (Seite)  —            1\n                          \u{2248} 1.000\n  d₂         1 Ecke       \u{221a}(2+\u{221a}3)\n                          \u{2248} 1.932\n  d₃         2 Ecken      1+\u{221a}3\n                          \u{2248} 2.732\n  d₄         3 Ecken      (3\u{221a}2+\u{221a}6)/2\n                          \u{2248} 3.346\n  d₅         4 Ecken      2+\u{221a}3\n                          \u{2248} 3.732\n  d₆ (⌀)     5 Ecken      \u{221a}6+\u{221a}2\n                          \u{2248} 3.864",
             );
 
             info_h(ui, "Verborgene Muster");

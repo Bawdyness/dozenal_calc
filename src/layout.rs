@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 // Copyright (c) 2026 Eric Naville
 
+use crate::info_content::{INFO_TITLES, draw_info_chapter};
 use crate::logic::DozenalDigit;
-use crate::painting::{INFO_TITLES, draw_info_chapter, paint_dozenal_digit, paint_token};
+use crate::painting::{paint_dozenal_digit, paint_token};
 use crate::tokens::{CalcToken, DozenalCalcApp, InfoState};
 use eframe::egui;
 use egui::{Align2, Color32, FontId, Pos2, Rect, Stroke, Vec2};
 
 pub const MOBILE_BREAKPOINT_PX: f32 = 500.0;
-const DISPLAY_LINE_H: f32 = 80.0; // height of each display line
+const DISPLAY_LINE_H: f32 = 60.0; // height of each display line
 const DISPLAY_GAP: f32 = 10.0; // gap between input and result line
 
 /// Formats an f64 as a decimal string with up to 10 significant digits, trailing zeros removed.
@@ -20,7 +21,7 @@ pub fn format_decimal_result(val: f64) -> String {
             "∞".to_string()
         };
     }
-    let s = format!("{:.10}", val);
+    let s = format!("{val:.10}");
     if s.contains('.') {
         s.trim_end_matches('0').trim_end_matches('.').to_string()
     } else {
@@ -107,84 +108,81 @@ impl DozenalCalcApp {
                         Pos2::new(x_pos, input_rect.center().y),
                         Vec2::splat(30.0),
                     );
-                    match token {
-                        CalcToken::Digit(d) => {
-                            paint_dozenal_digit(ui, ui.painter(), rect, *d, Color32::WHITE, 2.0);
-                            x_pos += 35.0;
-                        }
-                        _ => {
-                            let text = match token {
-                                CalcToken::Add => "+",
-                                CalcToken::Sub | CalcToken::Negate => "-",
-                                CalcToken::Mul => "×",
-                                CalcToken::Div => "÷",
-                                CalcToken::ParenOpen => "(",
-                                CalcToken::ParenClose => ")",
-                                CalcToken::Sin => "sin",
-                                CalcToken::Cos => "cos",
-                                CalcToken::Tan => "tan",
-                                CalcToken::Cot => "cot",
-                                CalcToken::ExpTopRight => "^",
-                                CalcToken::RootTopLeft => "√",
-                                CalcToken::OplusBotLeft => "⊕",
-                                CalcToken::LogBotRight => "log",
-                                CalcToken::ArcSin => "sin⁻¹",
-                                CalcToken::ArcCos => "cos⁻¹",
-                                CalcToken::ArcTan => "tan⁻¹",
-                                CalcToken::ArcCot => "cot⁻¹",
-                                CalcToken::Expand => "…",
-                                CalcToken::Decimal => ".",
-                                CalcToken::RatLit(_) => "Ans",
-                                CalcToken::ConstPi => "π",
-                                CalcToken::ConstE => "e",
-                                CalcToken::ConstPhi => "φ",
-                                CalcToken::ConstSqrt2 => "√2",
-                                CalcToken::Sinh => "sinh",
-                                CalcToken::Cosh => "cosh",
-                                CalcToken::Tanh => "tanh",
-                                CalcToken::Coth => "coth",
-                                CalcToken::ArSinh => "sinh⁻¹",
-                                CalcToken::ArCosh => "cosh⁻¹",
-                                CalcToken::ArTanh => "tanh⁻¹",
-                                CalcToken::ArCoth => "coth⁻¹",
-                                CalcToken::Factorial => "n!",
-                                CalcToken::AbsVal => "|x|",
-                                CalcToken::Reciprocal => "1/x",
-                                CalcToken::Mod => "mod",
-                                _ => "?",
-                            };
-                            ui.painter().text(
-                                rect.center(),
-                                Align2::CENTER_CENTER,
-                                text,
-                                FontId::monospace(24.0),
-                                Color32::LIGHT_GREEN,
-                            );
-                            x_pos += match token {
-                                CalcToken::ArcSin
-                                | CalcToken::ArcCos
-                                | CalcToken::ArcTan
-                                | CalcToken::ArcCot
-                                | CalcToken::ArSinh
-                                | CalcToken::ArCosh
-                                | CalcToken::ArTanh
-                                | CalcToken::ArCoth => 65.0,
-                                CalcToken::Sin
-                                | CalcToken::Cos
-                                | CalcToken::Tan
-                                | CalcToken::Cot
-                                | CalcToken::Sinh
-                                | CalcToken::Cosh
-                                | CalcToken::Tanh
-                                | CalcToken::Coth
-                                | CalcToken::LogBotRight
-                                | CalcToken::RatLit(_)
-                                | CalcToken::ConstSqrt2
-                                | CalcToken::Reciprocal
-                                | CalcToken::Mod => 45.0,
-                                _ => 30.0,
-                            };
-                        }
+                    if let CalcToken::Digit(d) = token {
+                        paint_dozenal_digit(ui, ui.painter(), rect, *d, Color32::WHITE, 2.0);
+                        x_pos += 35.0;
+                    } else {
+                        let text = match token {
+                            CalcToken::Add => "+",
+                            CalcToken::Sub | CalcToken::Negate => "-",
+                            CalcToken::Mul => "×",
+                            CalcToken::Div => "÷",
+                            CalcToken::ParenOpen => "(",
+                            CalcToken::ParenClose => ")",
+                            CalcToken::Sin => "sin",
+                            CalcToken::Cos => "cos",
+                            CalcToken::Tan => "tan",
+                            CalcToken::Cot => "cot",
+                            CalcToken::ExpTopRight => "^",
+                            CalcToken::RootTopLeft => "√",
+                            CalcToken::OplusBotLeft => "⊕",
+                            CalcToken::LogBotRight => "log",
+                            CalcToken::ArcSin => "sin⁻¹",
+                            CalcToken::ArcCos => "cos⁻¹",
+                            CalcToken::ArcTan => "tan⁻¹",
+                            CalcToken::ArcCot => "cot⁻¹",
+                            CalcToken::Expand => "…",
+                            CalcToken::Decimal => ".",
+                            CalcToken::RatLit(_) => "Ans",
+                            CalcToken::ConstPi => "π",
+                            CalcToken::ConstE => "e",
+                            CalcToken::ConstPhi => "φ",
+                            CalcToken::ConstSqrt2 => "√2",
+                            CalcToken::Sinh => "sinh",
+                            CalcToken::Cosh => "cosh",
+                            CalcToken::Tanh => "tanh",
+                            CalcToken::Coth => "coth",
+                            CalcToken::ArSinh => "sinh⁻¹",
+                            CalcToken::ArCosh => "cosh⁻¹",
+                            CalcToken::ArTanh => "tanh⁻¹",
+                            CalcToken::ArCoth => "coth⁻¹",
+                            CalcToken::Factorial => "n!",
+                            CalcToken::AbsVal => "|x|",
+                            CalcToken::Reciprocal => "1/x",
+                            CalcToken::Mod => "mod",
+                            _ => "?",
+                        };
+                        ui.painter().text(
+                            rect.center(),
+                            Align2::CENTER_CENTER,
+                            text,
+                            FontId::monospace(24.0),
+                            Color32::LIGHT_GREEN,
+                        );
+                        x_pos += match token {
+                            CalcToken::ArcSin
+                            | CalcToken::ArcCos
+                            | CalcToken::ArcTan
+                            | CalcToken::ArcCot
+                            | CalcToken::ArSinh
+                            | CalcToken::ArCosh
+                            | CalcToken::ArTanh
+                            | CalcToken::ArCoth => 65.0,
+                            CalcToken::Sin
+                            | CalcToken::Cos
+                            | CalcToken::Tan
+                            | CalcToken::Cot
+                            | CalcToken::Sinh
+                            | CalcToken::Cosh
+                            | CalcToken::Tanh
+                            | CalcToken::Coth
+                            | CalcToken::LogBotRight
+                            | CalcToken::RatLit(_)
+                            | CalcToken::ConstSqrt2
+                            | CalcToken::Reciprocal
+                            | CalcToken::Mod => 45.0,
+                            _ => 30.0,
+                        };
                     }
                 }
             }
@@ -203,8 +201,7 @@ impl DozenalCalcApp {
         } else if self.display_dec {
             let val = self
                 .last_ans
-                .map(|r| r.to_f64())
-                .unwrap_or(self.last_result_f64);
+                .map_or(self.last_result_f64, super::logic::Rational::to_f64);
             let s = format_decimal_result(val);
             ui.painter().text(
                 result_rect.center(),
@@ -328,7 +325,7 @@ impl DozenalCalcApp {
                 let rect = Rect::from_center_size(positions[idx], Vec2::splat(40.0));
                 match token {
                     CalcToken::Digit(d) => {
-                        paint_dozenal_digit(ui, ui.painter(), rect, *d, Color32::WHITE, 2.5)
+                        paint_dozenal_digit(ui, ui.painter(), rect, *d, Color32::WHITE, 2.5);
                     }
                     CalcToken::Sub | CalcToken::Negate => {
                         ui.painter().line_segment(
@@ -543,9 +540,9 @@ impl DozenalCalcApp {
                 }
             });
 
-        ui.add_space(10.0);
+        ui.add_space(4.0);
         ui.separator();
-        ui.add_space(10.0);
+        ui.add_space(4.0);
 
         egui::Grid::new("mob_ops_vertical")
             .spacing([spacing, spacing])
@@ -710,7 +707,7 @@ impl DozenalCalcApp {
         }
     }
 
-    /// Renders the floating info modal window (no-op when info_state is Closed).
+    /// Renders the floating info modal window (no-op when `info_state` is Closed).
     pub fn draw_info_modal(&mut self, ctx: &egui::Context) {
         if self.info_state == InfoState::Closed {
             return;

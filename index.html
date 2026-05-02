@@ -8,28 +8,24 @@
 
         <style>
           html, body {
-              margin: 0;
-              padding: 0;
-              background-color: #1a1a1a;
-              /* Pull-to-refresh und horizontales Bouncen unterbinden, vertikales
-                 Scrollen aber erlauben — falls der Viewport (z.B. mit eingeblendeter
-                 URL-Leiste) zu kurz für das gesamte Keypad ist. */
-              overscroll-behavior: contain;
-          }
-          body {
-              /* Safe-Area unten respektieren (Notch, Home-Indikator) */
-              padding-bottom: env(safe-area-inset-bottom, 0);
-          }
-          canvas {
-              display: block;
-              width: 100%;
-              /* Auf hohen Viewports füllt der Canvas den Bildschirm. Ist der
-                 Viewport kürzer als 700 px, behält der Canvas seine Mindesthöhe
-                 und der Body wird vertikal scrollbar — dadurch bleibt die
-                 Gleich-Taste in jedem Fall erreichbar. */
-              min-height: 700px;
+              /* svh = kleinster sichtbarer Viewport, nie hinter der URL-Leiste.
+                 vh dient als Fallback für ältere Browser. */
               height: 100vh;
               height: 100svh;
+              width: 100vw;
+              margin: 0;
+              padding: 0;
+              padding-bottom: env(safe-area-inset-bottom, 0);
+              box-sizing: border-box;
+              overflow: hidden;
+              background-color: #1a1a1a;
+              position: fixed;
+              touch-action: none;
+          }
+          canvas {
+              width: 100%;
+              height: 100%;
+              display: block;
           }
       </style>
         <script>

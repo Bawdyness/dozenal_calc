@@ -3,7 +3,7 @@
 
 use crate::logic::{DozenalDigit, Rational};
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum CalcToken {
     // Main keypad
     Digit(DozenalDigit),

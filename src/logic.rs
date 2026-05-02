@@ -57,6 +57,12 @@ impl DozenalDigit {
 }
 
 // Die Konvertierungs-Einheit
+/// Numerical tolerance used when extracting dozenal digits from an `f64` fractional
+/// part. Floating-point arithmetic introduces drift below this threshold; treating
+/// it as zero avoids spurious trailing-digit noise like `0.6000000000001` showing
+/// up as `0.6` instead of bleeding into a fake periodic tail.
+pub const FRAC_EPSILON: f64 = 0.000_001;
+
 pub struct DozenalConverter;
 
 impl DozenalConverter {
@@ -66,7 +72,7 @@ impl DozenalConverter {
         for digit in digits {
             result = result
                 .checked_mul(12)?
-                .checked_add(digit.to_value() as i128)?;
+                .checked_add(i128::from(digit.to_value()))?;
         }
         Some(result)
     }
@@ -76,7 +82,7 @@ impl DozenalConverter {
     pub fn to_decimal(digits: &[DozenalDigit]) -> f64 {
         let mut result = 0.0;
         for (i, digit) in digits.iter().rev().enumerate() {
-            result += digit.to_value() as f64 * 12.0_f64.powi(i as i32);
+            result += f64::from(digit.to_value()) * 12.0_f64.powi(i as i32);
         }
         result
     }
@@ -106,12 +112,12 @@ impl DozenalConverter {
         let mut digits = Vec::new();
         for _ in 0..precision {
             frac *= 12.0;
-            let d_val = (frac + 0.000001).floor() as u32;
+            let d_val = (frac + FRAC_EPSILON).floor() as u32;
             if let Some(d) = DozenalDigit::from_value(d_val) {
                 digits.push(d);
             }
-            frac -= d_val as f64;
-            if frac.abs() < 0.000001 {
+            frac -= f64::from(d_val);
+            if frac.abs() < FRAC_EPSILON {
                 break;
             }
         }
@@ -323,7 +329,7 @@ struct RatParser<'a> {
     pos: usize,
 }
 
-impl<'a> RatParser<'a> {
+impl RatParser<'_> {
     fn peek(&self) -> Option<RatExpr> {
         self.exprs.get(self.pos).copied()
     }

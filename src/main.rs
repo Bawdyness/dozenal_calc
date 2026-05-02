@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Eric Naville
 
 mod eval;
+mod info_content;
 mod input;
 mod layout;
 mod logic;

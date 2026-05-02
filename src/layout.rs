@@ -732,13 +732,23 @@ impl DozenalCalcApp {
                         .show(ui, |ui| {
                             for (i, title) in INFO_TITLES.iter().enumerate() {
                                 let label = format!("{:>2}. {}", i + 1, title);
-                                if ui
-                                    .add_sized(
-                                        [ui.available_width(), 26.0],
-                                        egui::Button::new(label).frame(false),
-                                    )
-                                    .clicked()
-                                {
+                                let (rect, response) = ui.allocate_exact_size(
+                                    Vec2::new(ui.available_width(), 30.0),
+                                    egui::Sense::click(),
+                                );
+                                let color = if response.hovered() {
+                                    Color32::LIGHT_BLUE
+                                } else {
+                                    ui.visuals().text_color()
+                                };
+                                ui.painter().text(
+                                    rect.left_center() + Vec2::new(8.0, 0.0),
+                                    Align2::LEFT_CENTER,
+                                    &label,
+                                    FontId::proportional(15.0),
+                                    color,
+                                );
+                                if response.clicked() {
                                     self.info_state = InfoState::Chapter(i);
                                 }
                                 ui.separator();

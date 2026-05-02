@@ -719,33 +719,37 @@ impl DozenalCalcApp {
             .show(ctx, |ui| match self.info_state {
                 InfoState::Closed => {}
                 InfoState::List => {
-                    ui.label(
-                        egui::RichText::new("Dozenal — Zwölf Kapitel")
-                            .strong()
-                            .size(14.0),
-                    );
-                    ui.add_space(4.0);
+                    ui.horizontal(|ui| {
+                        if ui.button("Schliessen").clicked() {
+                            self.info_state = InfoState::Closed;
+                        }
+                        ui.label(
+                            egui::RichText::new("Dozenal — Zwölf Kapitel")
+                                .strong()
+                                .size(16.0)
+                                .color(crate::painting::INFO_TEXT),
+                        );
+                    });
                     ui.separator();
-                    ui.add_space(2.0);
                     egui::ScrollArea::vertical()
-                        .max_height(400.0)
+                        .max_height(440.0)
                         .show(ui, |ui| {
                             for (i, title) in INFO_TITLES.iter().enumerate() {
                                 let label = format!("{:>2}. {}", i + 1, title);
                                 let (rect, response) = ui.allocate_exact_size(
-                                    Vec2::new(ui.available_width(), 30.0),
+                                    Vec2::new(ui.available_width(), 32.0),
                                     egui::Sense::click(),
                                 );
                                 let color = if response.hovered() {
                                     Color32::LIGHT_BLUE
                                 } else {
-                                    ui.visuals().text_color()
+                                    crate::painting::INFO_TEXT
                                 };
                                 ui.painter().text(
                                     rect.left_center() + Vec2::new(8.0, 0.0),
                                     Align2::LEFT_CENTER,
                                     &label,
-                                    FontId::proportional(15.0),
+                                    FontId::proportional(17.0),
                                     color,
                                 );
                                 if response.clicked() {
@@ -754,10 +758,6 @@ impl DozenalCalcApp {
                                 ui.separator();
                             }
                         });
-                    ui.add_space(4.0);
-                    if ui.button("Schliessen").clicked() {
-                        self.info_state = InfoState::Closed;
-                    }
                 }
                 InfoState::Chapter(n) => {
                     ui.horizontal(|ui| {
@@ -767,7 +767,8 @@ impl DozenalCalcApp {
                         ui.label(
                             egui::RichText::new(format!("{}. {}", n + 1, INFO_TITLES[n]))
                                 .strong()
-                                .size(12.0),
+                                .size(14.0)
+                                .color(crate::painting::INFO_TEXT),
                         );
                     });
                     ui.separator();

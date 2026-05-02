@@ -282,19 +282,33 @@ fn draw_arc(
 
 // --- INFO-MODAL HILFSROUTINEN ---
 
+/// Helleres Off-White für Lesetexte im Info-Modal — der egui-Default
+/// (~gray 192) ist auf dunklem Hintergrund schwer lesbar.
+pub const INFO_TEXT: Color32 = Color32::from_gray(230);
+
 pub fn info_h(ui: &mut egui::Ui, text: &str) {
     ui.add_space(8.0);
-    ui.label(egui::RichText::new(text).strong().size(17.0));
+    ui.label(
+        egui::RichText::new(text)
+            .strong()
+            .size(19.0)
+            .color(INFO_TEXT),
+    );
 }
 
 pub fn info_p(ui: &mut egui::Ui, text: &str) {
     ui.add_space(2.0);
-    ui.label(egui::RichText::new(text).size(15.0));
+    ui.label(egui::RichText::new(text).size(17.0).color(INFO_TEXT));
 }
 
 pub fn info_pre(ui: &mut egui::Ui, text: &str) {
     ui.add_space(2.0);
-    ui.label(egui::RichText::new(text).monospace().size(13.0));
+    ui.label(
+        egui::RichText::new(text)
+            .monospace()
+            .size(15.0)
+            .color(INFO_TEXT),
+    );
 }
 
 pub fn draw_digit_legend(ui: &mut egui::Ui) {

@@ -1,0 +1,59 @@
+<svg width="100%" viewBox="0 0 680 560" role="img">
+<title>Die sechs Diagonalentypen des regelmässigen Zwölfecks</title>
+<desc>Ein regelmässiges Zwölfeck, in dem je eine Diagonale jedes der sechs Typen farbig eingezeichnet ist: die Seite selbst und die fünf Diagonalen unterschiedlicher Länge, von der kürzesten bis zum Durchmesser.</desc>
+<g transform="translate(300, 248)">
+  <!-- Zwölfeck (dezent) -->
+  <polygon points="0,-200 100,-173.21 173.21,-100 200,0 173.21,100 100,173.21 0,200 -100,173.21 -173.21,100 -200,0 -173.21,-100 -100,-173.21"
+    fill="none" stroke="var(--s)" stroke-width="1" stroke-linejoin="round" opacity="0.5"/>
+  <!-- Eckpunkte (dezent) -->
+  <circle cx="0" cy="-200" r="3" fill="var(--s)"/>
+  <circle cx="100" cy="-173.21" r="3" fill="var(--s)"/>
+  <circle cx="173.21" cy="-100" r="3" fill="var(--s)"/>
+  <circle cx="200" cy="0" r="3" fill="var(--s)"/>
+  <circle cx="173.21" cy="100" r="3" fill="var(--s)"/>
+  <circle cx="100" cy="173.21" r="3" fill="var(--s)"/>
+  <circle cx="0" cy="200" r="3" fill="var(--s)"/>
+  <circle cx="-100" cy="173.21" r="3" fill="var(--s)"/>
+  <circle cx="-173.21" cy="100" r="3" fill="var(--s)"/>
+  <circle cx="-200" cy="0" r="3" fill="var(--s)"/>
+  <circle cx="-173.21" cy="-100" r="3" fill="var(--s)"/>
+  <circle cx="-100" cy="-173.21" r="3" fill="var(--s)"/>
+  <!-- d₁ Seite: Ecke 0 → Ecke 1 (grau) -->
+  <line x1="0" y1="-200" x2="100" y2="-173.21" stroke="#5F5E5A" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- d₂ kürzeste Diagonale: Ecke 1 → Ecke 3 (teal) -->
+  <line x1="100" y1="-173.21" x2="200" y2="0" stroke="#0F6E56" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- d₃: Ecke 0 → Ecke 3 (blue) -->
+  <line x1="0" y1="-200" x2="200" y2="0" stroke="#185FA5" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- d₄: Ecke 1 → Ecke 5 (purple) -->
+  <line x1="100" y1="-173.21" x2="100" y2="173.21" stroke="#534AB7" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- d₅: Ecke 0 → Ecke 5 (coral) -->
+  <line x1="0" y1="-200" x2="100" y2="173.21" stroke="#993C1D" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- d₆ Durchmesser: Ecke 0 → Ecke 6 (red) -->
+  <line x1="0" y1="-200" x2="0" y2="200" stroke="#A32D2D" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- Endpunkte hervorheben -->
+  <circle cx="0" cy="-200" r="4.5" fill="var(--p)"/>
+  <circle cx="100" cy="-173.21" r="4.5" fill="var(--p)"/>
+  <circle cx="200" cy="0" r="4.5" fill="var(--p)"/>
+  <circle cx="100" cy="173.21" r="4.5" fill="var(--p)"/>
+  <circle cx="0" cy="200" r="4.5" fill="var(--p)"/>
+</g>
+<!-- Legende rechts -->
+<line x1="524" y1="80" x2="554" y2="80" stroke="#5F5E5A" stroke-width="2.5" stroke-linecap="round"/>
+<text class="ts" x="564" y="80" dominant-baseline="central">s = 1</text>
+<text class="ts" x="564" y="96" dominant-baseline="central" opacity="0.6">≈ 1.000</text>
+<line x1="524" y1="130" x2="554" y2="130" stroke="#0F6E56" stroke-width="2.5" stroke-linecap="round"/>
+<text class="ts" x="564" y="130" dominant-baseline="central">d₂ = √(2+√3)</text>
+<text class="ts" x="564" y="146" dominant-baseline="central" opacity="0.6">≈ 1.932</text>
+<line x1="524" y1="180" x2="554" y2="180" stroke="#185FA5" stroke-width="2.5" stroke-linecap="round"/>
+<text class="ts" x="564" y="180" dominant-baseline="central">d₃ = 1+√3</text>
+<text class="ts" x="564" y="196" dominant-baseline="central" opacity="0.6">≈ 2.732</text>
+<line x1="524" y1="230" x2="554" y2="230" stroke="#534AB7" stroke-width="2.5" stroke-linecap="round"/>
+<text class="ts" x="564" y="230" dominant-baseline="central">d₄ = (3√2+√6)/2</text>
+<text class="ts" x="564" y="246" dominant-baseline="central" opacity="0.6">≈ 3.346</text>
+<line x1="524" y1="280" x2="554" y2="280" stroke="#993C1D" stroke-width="2.5" stroke-linecap="round"/>
+<text class="ts" x="564" y="280" dominant-baseline="central">d₅ = 2+√3</text>
+<text class="ts" x="564" y="296" dominant-baseline="central" opacity="0.6">≈ 3.732</text>
+<line x1="524" y1="330" x2="554" y2="330" stroke="#A32D2D" stroke-width="2.5" stroke-linecap="round"/>
+<text class="ts" x="564" y="330" dominant-baseline="central">d₆ = √6+√2</text>
+<text class="ts" x="564" y="346" dominant-baseline="central" opacity="0.6">≈ 3.864</text>
+</svg>

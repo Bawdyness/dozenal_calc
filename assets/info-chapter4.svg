@@ -1,0 +1,40 @@
+<svg width="100%" viewBox="0 0 680 520" role="img">
+<title>Regelmässiges Zwölfeck mit eingeschriebenem Dreieck, Quadrat und Sechseck</title>
+<desc>Ein regelmässiges Zwölfeck mit drei farbig markierten eingeschriebenen Vielecken: einem grünen gleichseitigen Dreieck, einem blauen Quadrat und einem violetten regelmässigen Sechseck. Alle teilen denselben Umkreis.</desc>
+<g transform="translate(340, 248)">
+  <!-- Umkreis (subtil) -->
+  <circle cx="0" cy="0" r="200" fill="none" stroke="var(--s)" stroke-width="0.5" stroke-dasharray="4 4" opacity="0.4"/>
+  <!-- Eingeschriebenes Sechseck (jede 2. Ecke: 0,2,4,6,8,10) — Purple -->
+  <polygon points="0,-200 173.21,-100 173.21,100 0,200 -173.21,100 -173.21,-100"
+    fill="#AFA9EC" fill-opacity="0.12" stroke="#534AB7" stroke-width="1.5" stroke-linejoin="round"/>
+  <!-- Eingeschriebenes Quadrat (jede 3. Ecke: 0,3,6,9) — Blue -->
+  <polygon points="0,-200 200,0 0,200 -200,0"
+    fill="#85B7EB" fill-opacity="0.12" stroke="#185FA5" stroke-width="1.5" stroke-linejoin="round"/>
+  <!-- Eingeschriebenes Dreieck (jede 4. Ecke: 0,4,8) — Teal -->
+  <polygon points="0,-200 173.21,100 -173.21,100"
+    fill="#9FE1CB" fill-opacity="0.12" stroke="#0F6E56" stroke-width="1.5" stroke-linejoin="round"/>
+  <!-- Zwölfeck selbst -->
+  <polygon points="0,-200 103.53,-173.21 173.21,-103.53 200,0 173.21,103.53 103.53,173.21 0,200 -103.53,173.21 -173.21,103.53 -200,0 -173.21,-103.53 -103.53,-173.21"
+    fill="none" stroke="var(--p)" stroke-width="2" stroke-linejoin="round"/>
+  <!-- Eckpunkte des Zwölfecks -->
+  <circle cx="0" cy="-200" r="3.5" fill="var(--p)"/>
+  <circle cx="103.53" cy="-173.21" r="3" fill="var(--s)"/>
+  <circle cx="173.21" cy="-103.53" r="3" fill="var(--s)"/>
+  <circle cx="200" cy="0" r="3.5" fill="var(--p)"/>
+  <circle cx="173.21" cy="103.53" r="3" fill="var(--s)"/>
+  <circle cx="103.53" cy="173.21" r="3" fill="var(--s)"/>
+  <circle cx="0" cy="200" r="3.5" fill="var(--p)"/>
+  <circle cx="-103.53" cy="173.21" r="3" fill="var(--s)"/>
+  <circle cx="-173.21" cy="103.53" r="3" fill="var(--s)"/>
+  <circle cx="-200" cy="0" r="3.5" fill="var(--p)"/>
+  <circle cx="-173.21" cy="-103.53" r="3" fill="var(--s)"/>
+  <circle cx="-103.53" cy="-173.21" r="3" fill="var(--s)"/>
+</g>
+<!-- Legende -->
+<rect x="40" y="476" width="14" height="14" rx="2" fill="#9FE1CB" stroke="#0F6E56" stroke-width="1"/>
+<text class="ts" x="62" y="488" dominant-baseline="central">Dreieck (jede 4. Ecke)</text>
+<rect x="240" y="476" width="14" height="14" rx="2" fill="#85B7EB" stroke="#185FA5" stroke-width="1"/>
+<text class="ts" x="262" y="488" dominant-baseline="central">Quadrat (jede 3. Ecke)</text>
+<rect x="450" y="476" width="14" height="14" rx="2" fill="#AFA9EC" stroke="#534AB7" stroke-width="1"/>
+<text class="ts" x="472" y="488" dominant-baseline="central">Sechseck (jede 2. Ecke)</text>
+</svg>

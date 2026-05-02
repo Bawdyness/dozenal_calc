@@ -11,6 +11,7 @@ mod tokens;
 
 use eframe::egui;
 use egui::Color32;
+use layout::MOBILE_BREAKPOINT_PX;
 use tokens::DozenalCalcApp;
 
 // 1. Die Tür für den Desktop (Native)
@@ -71,11 +72,19 @@ impl eframe::App for DozenalCalcApp {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
+            let is_mobile = ctx.screen_rect().width() < MOBILE_BREAKPOINT_PX;
             ui.vertical_centered(|ui| {
-                ui.heading("Dozenal Calc");
-                ui.add_space(10.0);
-                self.draw_display(ui, ctx);
-                ui.add_space(20.0);
+                if is_mobile {
+                    ui.label(egui::RichText::new("Dozenal Calc").size(14.0).strong());
+                    ui.add_space(2.0);
+                    self.draw_display(ui, ctx);
+                    ui.add_space(8.0);
+                } else {
+                    ui.heading("Dozenal Calc");
+                    ui.add_space(10.0);
+                    self.draw_display(ui, ctx);
+                    ui.add_space(20.0);
+                }
                 self.draw_keypad(ui, ctx);
             });
         });

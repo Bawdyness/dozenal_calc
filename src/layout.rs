@@ -9,7 +9,7 @@ use eframe::egui;
 use egui::{Align2, Color32, FontId, Pos2, Rect, Stroke, Vec2};
 
 pub const MOBILE_BREAKPOINT_PX: f32 = 500.0;
-const DISPLAY_LINE_H: f32 = 60.0; // height of each display line
+const DISPLAY_LINE_H: f32 = 50.0; // height of each display line
 const DISPLAY_GAP: f32 = 10.0; // gap between input and result line
 
 /// Formats an f64 as a decimal string with up to 10 significant digits, trailing zeros removed.

@@ -85,50 +85,63 @@ pub const GLYPH_SPRITE: &str = r#"
       <line x1="25" y1="75" x2="75" y2="25"/>
     </symbol>
 
-    <!-- Composite-Operatoren: zentriertes 'x' + Marker-Quadrat an einer Ecke -->
+    <!-- Composite-Operatoren: zentriertes 'x' + Marker-Quadrat an einer Ecke.
+         Quadrat-Grösse 26×26 und Stroke 5 (waren 18 / 3), damit der Marker
+         auf typischen Button-Grössen klar als Quadrat lesbar bleibt und nicht
+         als „nur ein x" durchgeht. Style-Attribute zwingen Fill/Stroke
+         deterministisch — vermeidet, dass die CSS-Regel `.glyph { fill: none }`
+         über Shadow-DOM-Inheritance via <use> die Werte schluckt. -->
     <symbol id="op-pow" viewBox="0 0 100 100">
-      <text x="50" y="50" text-anchor="middle" dominant-baseline="central"
+      <text x="50" y="55" text-anchor="middle" dominant-baseline="central"
             font-family="ui-monospace,SFMono-Regular,Menlo,monospace"
-            font-size="45" fill="currentColor" stroke="none">x</text>
-      <rect x="73" y="14" width="18" height="18"
-            fill="none" stroke="currentColor" stroke-width="3"
+            font-size="56" font-weight="700"
+            style="fill: currentColor; stroke: none;">x</text>
+      <rect x="68" y="8" width="26" height="26"
+            style="fill: none; stroke: currentColor; stroke-width: 5;"
             vector-effect="non-scaling-stroke"/>
     </symbol>
     <symbol id="op-root" viewBox="0 0 100 100">
-      <text x="50" y="50" text-anchor="middle" dominant-baseline="central"
+      <text x="50" y="55" text-anchor="middle" dominant-baseline="central"
             font-family="ui-monospace,SFMono-Regular,Menlo,monospace"
-            font-size="45" fill="currentColor" stroke="none">x</text>
-      <rect x="9" y="14" width="18" height="18"
-            fill="none" stroke="currentColor" stroke-width="3"
+            font-size="56" font-weight="700"
+            style="fill: currentColor; stroke: none;">x</text>
+      <rect x="6" y="8" width="26" height="26"
+            style="fill: none; stroke: currentColor; stroke-width: 5;"
             vector-effect="non-scaling-stroke"/>
     </symbol>
     <symbol id="op-log" viewBox="0 0 100 100">
-      <text x="50" y="50" text-anchor="middle" dominant-baseline="central"
+      <text x="50" y="55" text-anchor="middle" dominant-baseline="central"
             font-family="ui-monospace,SFMono-Regular,Menlo,monospace"
-            font-size="45" fill="currentColor" stroke="none">x</text>
-      <rect x="73" y="68" width="18" height="18"
-            fill="none" stroke="currentColor" stroke-width="3"
+            font-size="56" font-weight="700"
+            style="fill: currentColor; stroke: none;">x</text>
+      <rect x="68" y="66" width="26" height="26"
+            style="fill: none; stroke: currentColor; stroke-width: 5;"
             vector-effect="non-scaling-stroke"/>
     </symbol>
     <symbol id="op-oplus" viewBox="0 0 100 100">
-      <text x="50" y="50" text-anchor="middle" dominant-baseline="central"
+      <text x="50" y="55" text-anchor="middle" dominant-baseline="central"
             font-family="ui-monospace,SFMono-Regular,Menlo,monospace"
-            font-size="45" fill="currentColor" stroke="none">x</text>
-      <rect x="9" y="68" width="18" height="18"
-            fill="none" stroke="currentColor" stroke-width="3"
+            font-size="56" font-weight="700"
+            style="fill: currentColor; stroke: none;">x</text>
+      <rect x="6" y="66" width="26" height="26"
+            style="fill: none; stroke: currentColor; stroke-width: 5;"
             vector-effect="non-scaling-stroke"/>
-      <line x1="18" y1="74" x2="18" y2="80"
-            stroke="currentColor" stroke-width="3" vector-effect="non-scaling-stroke"/>
-      <line x1="15" y1="77" x2="21" y2="77"
-            stroke="currentColor" stroke-width="3" vector-effect="non-scaling-stroke"/>
+      <line x1="19" y1="73" x2="19" y2="85"
+            style="stroke: currentColor; stroke-width: 4;" vector-effect="non-scaling-stroke"/>
+      <line x1="13" y1="79" x2="25" y2="79"
+            style="stroke: currentColor; stroke-width: 4;" vector-effect="non-scaling-stroke"/>
     </symbol>
 
-    <!-- Cursor-Pfeile als gefüllte Dreiecke -->
+    <!-- Cursor-Pfeile als gefüllte Dreiecke — style-Attribut zwingt das Fill,
+         damit es nicht von der globalen `.glyph { fill: none }`-Regel
+         überschrieben wird (Shadow-DOM-Inheritance via <use>). -->
     <symbol id="op-tri-left" viewBox="0 0 100 100">
-      <path d="M 25 50 L 70 25 L 70 75 Z" fill="currentColor" stroke="none"/>
+      <path d="M 25 50 L 70 25 L 70 75 Z"
+            style="fill: currentColor; stroke: none;"/>
     </symbol>
     <symbol id="op-tri-right" viewBox="0 0 100 100">
-      <path d="M 75 50 L 30 25 L 30 75 Z" fill="currentColor" stroke="none"/>
+      <path d="M 75 50 L 30 25 L 30 75 Z"
+            style="fill: currentColor; stroke: none;"/>
     </symbol>
   </defs>
 </svg>

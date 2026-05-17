@@ -67,8 +67,20 @@ fn InputTokens() -> impl IntoView {
     view! {
         <span class="token-row token-row-input">
             {move || {
+                let cursor_pos = state.cursor_pos.get();
+                let active = !state.result_field_active.get();
                 state.input_buffer.with(|buf| {
-                    buf.iter().map(render_token_node).collect_view()
+                    let mut items: Vec<AnyView> = Vec::new();
+                    for (i, t) in buf.iter().enumerate() {
+                        if i == cursor_pos && active {
+                            items.push(view! { <span class="cursor"/> }.into_any());
+                        }
+                        items.push(render_token_node(t));
+                    }
+                    if cursor_pos >= buf.len() && active {
+                        items.push(view! { <span class="cursor"/> }.into_any());
+                    }
+                    items.into_view()
                 })
             }}
         </span>

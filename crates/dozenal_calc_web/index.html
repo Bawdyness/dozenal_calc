@@ -139,9 +139,11 @@
         .display-line {
             display: flex;
             align-items: center;
-            min-height: 44px;
+            min-height: 48px;
             margin-top: 18px;
-            overflow: hidden;
+            padding: 6px 0;                 /* Raum für Stroke-Überstand */
+            overflow-x: hidden;             /* lange Ausdrücke horizontal kappen */
+            overflow-y: visible;            /* aber Glyphen-Stroke darf vertikal raus */
         }
         /* Eingabe-Zeile hell und gut lesbar — kein dim mehr.
            Resultat-Zeile etwas heller noch (volles Weiss). */
@@ -353,15 +355,17 @@
 
         .token-btn-fn {
             color: var(--op-normal);
-            font-size: 17px;
-            font-weight: 600;
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 20px;
+            font-weight: 700;
         }
         .token-btn-fn:active { color: var(--op-pressed); }
 
         .token-btn-mode {
             color: var(--fg-dim);
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
             font-size: 13px;
-            font-weight: 600;
+            font-weight: 700;
             letter-spacing: 0.02em;
         }
         .token-btn-mode:active { color: var(--op-pressed); }
@@ -380,6 +384,26 @@
             min-height: 56px;
         }
         .token-btn-equals:active { color: var(--op-pressed); }
+
+        /* --- Cursor im Display ---
+           Roter Strich zwischen Token-Positionen; blinkt im 1-s-Takt.
+           Wird in display.rs zwischen Token-Children eingefügt. */
+        .cursor {
+            display: inline-block;
+            width: 2px;
+            height: 1.2em;
+            background: var(--ac);
+            margin: 0 1px;
+            vertical-align: middle;
+            animation: cursor-blink 1s steps(2, start) infinite;
+        }
+        @keyframes cursor-blink {
+            50% { opacity: 0; }
+        }
+        /* Reduced-motion respektieren — kein Blinken. */
+        @media (prefers-reduced-motion: reduce) {
+            .cursor { animation: none; opacity: 1; }
+        }
 
         /* --- Armed-Marker (Flutter `_ArmedDot`, top: 4, right: 4) --- */
         .token-btn.armed::after {

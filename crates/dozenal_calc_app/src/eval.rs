@@ -4,7 +4,7 @@
 use crate::state::DozenalCalcApp;
 use dozenal_core::{
     AngleMode, build_meval_string, build_rat_expr, eval_rational, format_f64_result,
-    format_rational_result, with_implicit_muls,
+    format_rational_result, resolve_postfix, with_implicit_muls,
 };
 
 /// Builds the meval evaluation context with angle-mode-aware trig and the custom
@@ -39,7 +39,11 @@ fn make_meval_context(am: AngleMode) -> meval::Context<'static> {
 
 impl DozenalCalcApp {
     pub fn calculate_result(&mut self) {
-        let expanded = with_implicit_muls(&self.input_buffer);
+        // resolve_postfix sortiert Postfix-Aufrufe (n!, |x|, 1/x) zu Präfix-Aufrufen
+        // um, damit `build_meval_string` sie als `fact(…)`, `abs(…)`, `recip(…)`
+        // formen kann. Beide Eingabewege (User tippt `5 !` oder `! 5`) funktionieren.
+        let normalized = resolve_postfix(&self.input_buffer);
+        let expanded = with_implicit_muls(&normalized);
         let math_string = build_meval_string(&expanded);
         let rat_result = build_rat_expr(&expanded).and_then(|exprs| eval_rational(&exprs));
         let ctx = make_meval_context(self.angle_mode);

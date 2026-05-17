@@ -86,6 +86,16 @@ impl DozenalCalcApp {
                     .insert(self.cursor_pos, CalcToken::Digit(digit));
                 self.cursor_pos += 1;
             }
+            CalcToken::Decimal => {
+                // Schutz gegen `1.2.3`: nur einfügen, wenn das Literal unter dem
+                // Cursor noch keinen Dezimalpunkt enthält. Bidirektionaler Walk,
+                // damit auch der mitten im Literal navigierte Fall greift.
+                if !self.has_decimal_in_current_literal() {
+                    self.input_buffer
+                        .insert(self.cursor_pos, CalcToken::Decimal);
+                    self.cursor_pos += 1;
+                }
+            }
             CalcToken::Equals => self.calculate_result(),
             CalcToken::AC => {
                 self.input_buffer.clear();
@@ -282,6 +292,35 @@ impl DozenalCalcApp {
         self.input_buffer[self.cursor_pos - 1] == token
     }
 
+    /// True wenn das Zahl-Literal unter dem Cursor schon einen Dezimalpunkt enthält.
+    /// Bidirektionaler Walk durch zusammenhängende Digit/Decimal-Tokens, damit auch
+    /// der "mitten ins Literal navigiert"-Fall greift (z. B. Cursor zwischen `1` und `.2`).
+    fn has_decimal_in_current_literal(&self) -> bool {
+        let mut i = self.cursor_pos;
+        while i > 0 {
+            i -= 1;
+            let t = self.input_buffer[i];
+            if matches!(t, CalcToken::Decimal) {
+                return true;
+            }
+            if !matches!(t, CalcToken::Digit(_)) {
+                return false;
+            }
+        }
+        let mut i = self.cursor_pos;
+        while i < self.input_buffer.len() {
+            let t = self.input_buffer[i];
+            if matches!(t, CalcToken::Decimal) {
+                return true;
+            }
+            if !matches!(t, CalcToken::Digit(_)) {
+                return false;
+            }
+            i += 1;
+        }
+        false
+    }
+
     pub fn handle_keyboard(&mut self, ctx: &egui::Context) {
         // Collect tokens to dispatch outside the closure (borrow-checker)
         let mut tokens: Vec<CalcToken> = Vec::new();
@@ -339,5 +378,69 @@ impl DozenalCalcApp {
         for t in tokens {
             self.handle_click(t);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dozenal_core::DozenalDigit::{D1, D2, D3};
+
+    #[test]
+    fn decimal_not_inserted_twice_in_same_literal() {
+        let mut app = DozenalCalcApp::default();
+        app.handle_click(CalcToken::Digit(D1));
+        app.handle_click(CalcToken::Decimal);
+        app.handle_click(CalcToken::Digit(D2));
+        app.handle_click(CalcToken::Decimal); // soll ignoriert werden
+        app.handle_click(CalcToken::Digit(D3));
+        assert_eq!(
+            app.input_buffer,
+            vec![
+                CalcToken::Digit(D1),
+                CalcToken::Decimal,
+                CalcToken::Digit(D2),
+                CalcToken::Digit(D3),
+            ]
+        );
+    }
+
+    #[test]
+    fn decimal_allowed_after_operator_starts_new_literal() {
+        let mut app = DozenalCalcApp::default();
+        app.handle_click(CalcToken::Digit(D1));
+        app.handle_click(CalcToken::Decimal);
+        app.handle_click(CalcToken::Digit(D2));
+        app.handle_click(CalcToken::Add);
+        app.handle_click(CalcToken::Decimal); // neues Literal, OK
+        app.handle_click(CalcToken::Digit(D3));
+        let decimals = app
+            .input_buffer
+            .iter()
+            .filter(|t| matches!(t, CalcToken::Decimal))
+            .count();
+        assert_eq!(decimals, 2);
+    }
+
+    #[test]
+    fn decimal_blocked_when_navigated_into_literal() {
+        // Bidirektionaler Walk: 1.2 mit Cursor zwischen 1 und . darf kein
+        // zweites . einfügen.
+        let mut app = DozenalCalcApp::default();
+        app.handle_click(CalcToken::Digit(D1));
+        app.handle_click(CalcToken::Decimal);
+        app.handle_click(CalcToken::Digit(D2));
+        // Cursor zurück auf Position 1 (zwischen D1 und Decimal)
+        app.handle_click(CalcToken::TriangleLeft);
+        app.handle_click(CalcToken::TriangleLeft);
+        app.handle_click(CalcToken::Decimal); // soll ignoriert werden
+        assert_eq!(
+            app.input_buffer,
+            vec![
+                CalcToken::Digit(D1),
+                CalcToken::Decimal,
+                CalcToken::Digit(D2)
+            ]
+        );
     }
 }

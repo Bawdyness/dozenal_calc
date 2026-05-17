@@ -185,8 +185,15 @@ pub fn resolve_custom_operators(tokens: &mut Vec<String>) {
         let Some(right) = right_operand_range(tokens, i) else {
             break;
         };
-        let preceded_by_op =
-            i == 0 || matches!(tokens[i - 1].as_str(), "+" | "-" | "*" | "/" | "(");
+        // `^` und `%` zählen ebenfalls als vorangehende Operatoren: nach `2^` oder
+        // `5%` startet `√` einen frischen Radikanden (unäre Quadratwurzel), nicht
+        // eine binäre n-te Wurzel. Ohne diese beiden würde `2^√3` als Konstrukt
+        // mit `^` als n-Index fehlinterpretiert → `(3^(1/^))` → SYNTAX ERROR.
+        let preceded_by_op = i == 0
+            || matches!(
+                tokens[i - 1].as_str(),
+                "+" | "-" | "*" | "/" | "(" | "^" | "%"
+            );
         let x = tokens[right.clone()].join("");
         if preceded_by_op {
             tokens.splice(i..right.end, vec![format!("({x}^(1/2))")]);
@@ -258,6 +265,140 @@ fn needs_implicit_mul(tokens: &[CalcToken], i: usize) -> bool {
             | CalcToken::AbsVal
             | CalcToken::Reciprocal
     )
+}
+
+fn is_function_token(t: CalcToken) -> bool {
+    matches!(
+        t,
+        CalcToken::Sin
+            | CalcToken::Cos
+            | CalcToken::Tan
+            | CalcToken::Cot
+            | CalcToken::ArcSin
+            | CalcToken::ArcCos
+            | CalcToken::ArcTan
+            | CalcToken::ArcCot
+            | CalcToken::Sinh
+            | CalcToken::Cosh
+            | CalcToken::Tanh
+            | CalcToken::Coth
+            | CalcToken::ArSinh
+            | CalcToken::ArCosh
+            | CalcToken::ArTanh
+            | CalcToken::ArCoth
+            | CalcToken::Factorial
+            | CalcToken::AbsVal
+            | CalcToken::Reciprocal
+    )
+}
+
+/// Range of the operand immediately to the left of `op_pos`. Handles three
+/// shapes: a parenthesised sub-expression (with its leading function token
+/// if any), a contiguous Digit/Decimal number literal, or a single-token
+/// operand (RatLit, constant). Other token kinds — operators, function
+/// tokens without their argument — return `None`.
+fn left_operand_token_range(tokens: &[CalcToken], op_pos: usize) -> Option<(usize, usize)> {
+    if op_pos == 0 {
+        return None;
+    }
+    let prev = tokens[op_pos - 1];
+
+    if matches!(prev, CalcToken::ParenClose) {
+        let mut depth: i32 = 0;
+        let mut j = op_pos - 1;
+        loop {
+            let t = tokens[j];
+            if matches!(t, CalcToken::ParenClose) {
+                depth += 1;
+            } else if matches!(t, CalcToken::ParenOpen) {
+                depth -= 1;
+                if depth == 0 {
+                    if j > 0 && is_function_token(tokens[j - 1]) {
+                        return Some((j - 1, op_pos));
+                    }
+                    return Some((j, op_pos));
+                }
+            }
+            if j == 0 {
+                break;
+            }
+            j -= 1;
+        }
+        return None;
+    }
+
+    if matches!(prev, CalcToken::Digit(_) | CalcToken::Decimal) {
+        let mut j = op_pos - 1;
+        while j > 0 {
+            let t = tokens[j - 1];
+            if matches!(t, CalcToken::Digit(_) | CalcToken::Decimal) {
+                j -= 1;
+            } else {
+                break;
+            }
+        }
+        return Some((j, op_pos));
+    }
+
+    if matches!(
+        prev,
+        CalcToken::RatLit(_)
+            | CalcToken::ConstPi
+            | CalcToken::ConstE
+            | CalcToken::ConstPhi
+            | CalcToken::ConstSqrt2
+    ) {
+        return Some((op_pos - 1, op_pos));
+    }
+
+    None
+}
+
+/// Wandelt postfix-Aufrufe von `Factorial`, `AbsVal` und `Reciprocal` (deren
+/// Button-Labels `n!`, `|x|`, `1/x` Postfix-Syntax suggerieren) in die
+/// Prefix-Funktions-Aufrufform, die die restliche Pipeline erwartet. So wird
+/// aus `[Digit(5), Factorial]` die Folge `[Factorial, (, 5, )]`, die
+/// `build_meval_string` als `fact(5)` rendert.
+///
+/// Postfix-Tokens, die bereits an einer gültigen Präfix-Position stehen (kein
+/// Operand links, oder nur Nicht-Operand-Token), bleiben unverändert — so
+/// funktioniert auch der Präfix-Eingabe-Pfad weiterhin.
+///
+/// Mehrere Durchläufe lösen verschachtelte Fälle wie `5!!` korrekt auf: nach
+/// dem ersten Rewrite `[Factorial, (, 5, )]` umschlingt der zweite Durchlauf
+/// das äußere `!` um den geklammerten Zwischenstand.
+pub fn resolve_postfix(tokens: &[CalcToken]) -> Vec<CalcToken> {
+    let mut current = tokens.to_vec();
+    loop {
+        let mut changed = false;
+        for i in 0..current.len() {
+            let t = current[i];
+            if !matches!(
+                t,
+                CalcToken::Factorial | CalcToken::AbsVal | CalcToken::Reciprocal
+            ) {
+                continue;
+            }
+            let Some((start, end)) = left_operand_token_range(&current, i) else {
+                continue;
+            };
+            let operand: Vec<CalcToken> = current[start..end].to_vec();
+            let mut new_current = Vec::with_capacity(current.len() + 2);
+            new_current.extend_from_slice(&current[..start]);
+            new_current.push(t);
+            new_current.push(CalcToken::ParenOpen);
+            new_current.extend_from_slice(&operand);
+            new_current.push(CalcToken::ParenClose);
+            new_current.extend_from_slice(&current[i + 1..]);
+            current = new_current;
+            changed = true;
+            break;
+        }
+        if !changed {
+            break;
+        }
+    }
+    current
 }
 
 /// Expands a token sequence by inserting `CalcToken::Mul` wherever algebraic
@@ -618,6 +759,117 @@ mod tests {
             out,
             vec![CalcToken::Digit(D1), CalcToken::Digit(D2)],
             "no Mul within a number"
+        );
+    }
+
+    #[test]
+    fn sqrt_after_pow_is_unary() {
+        // Regression: 2^√3 muss als 2^(3^(1/2)) parsen, nicht als
+        // n-te Wurzel mit `^` als n.
+        let out = resolved(&["2", "^", "√", "3"]);
+        assert_eq!(out, "2 ^ (3^(1/2))");
+    }
+
+    #[test]
+    fn sqrt_after_percent_is_unary() {
+        let out = resolved(&["5", "%", "√", "9"]);
+        assert_eq!(out, "5 % (9^(1/2))");
+    }
+
+    #[test]
+    fn factorial_postfix_to_prefix() {
+        use crate::digit::DozenalDigit::D5;
+        let input = vec![CalcToken::Digit(D5), CalcToken::Factorial];
+        let out = resolve_postfix(&input);
+        assert_eq!(
+            out,
+            vec![
+                CalcToken::Factorial,
+                CalcToken::ParenOpen,
+                CalcToken::Digit(D5),
+                CalcToken::ParenClose,
+            ]
+        );
+    }
+
+    #[test]
+    fn factorial_prefix_unchanged() {
+        use crate::digit::DozenalDigit::D5;
+        // Kein Operand vor Factorial → unverändert lassen.
+        let input = vec![CalcToken::Factorial, CalcToken::Digit(D5)];
+        let out = resolve_postfix(&input);
+        assert_eq!(out, input);
+    }
+
+    #[test]
+    fn nested_factorial_postfix() {
+        use crate::digit::DozenalDigit::D5;
+        // 5!! → Factorial(Factorial(5))
+        let input = vec![
+            CalcToken::Digit(D5),
+            CalcToken::Factorial,
+            CalcToken::Factorial,
+        ];
+        let out = resolve_postfix(&input);
+        let expected = vec![
+            CalcToken::Factorial,
+            CalcToken::ParenOpen,
+            CalcToken::Factorial,
+            CalcToken::ParenOpen,
+            CalcToken::Digit(D5),
+            CalcToken::ParenClose,
+            CalcToken::ParenClose,
+        ];
+        assert_eq!(out, expected);
+    }
+
+    #[test]
+    fn abs_postfix_to_prefix() {
+        use crate::digit::DozenalDigit::{D2, D5};
+        // 25 | → abs(25)
+        let input = vec![
+            CalcToken::Digit(D2),
+            CalcToken::Digit(D5),
+            CalcToken::AbsVal,
+        ];
+        let out = resolve_postfix(&input);
+        assert_eq!(
+            out,
+            vec![
+                CalcToken::AbsVal,
+                CalcToken::ParenOpen,
+                CalcToken::Digit(D2),
+                CalcToken::Digit(D5),
+                CalcToken::ParenClose,
+            ]
+        );
+    }
+
+    #[test]
+    fn reciprocal_postfix_paren_operand() {
+        use crate::digit::DozenalDigit::{D2, D3};
+        // (2+3) 1/x → recip((2+3))
+        let input = vec![
+            CalcToken::ParenOpen,
+            CalcToken::Digit(D2),
+            CalcToken::Add,
+            CalcToken::Digit(D3),
+            CalcToken::ParenClose,
+            CalcToken::Reciprocal,
+        ];
+        let out = resolve_postfix(&input);
+        assert_eq!(
+            out,
+            vec![
+                CalcToken::Reciprocal,
+                CalcToken::ParenOpen,
+                CalcToken::ParenOpen,
+                CalcToken::Digit(D2),
+                CalcToken::Add,
+                CalcToken::Digit(D3),
+                CalcToken::ParenClose,
+                CalcToken::ParenClose,
+            ]
         );
     }
 

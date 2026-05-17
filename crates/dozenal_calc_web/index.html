@@ -143,7 +143,9 @@
             margin-top: 18px;
             overflow: hidden;
         }
-        .display-input { justify-content: flex-start; color: var(--fg-dim); }
+        /* Eingabe-Zeile hell und gut lesbar — kein dim mehr.
+           Resultat-Zeile etwas heller noch (volles Weiss). */
+        .display-input { justify-content: flex-start; color: #c8c8c8; }
         .display-result { justify-content: flex-end; color: var(--digit-normal); }
         .display-separator {
             border-top: 0.5px solid var(--separator);
@@ -156,29 +158,33 @@
             align-items: center;
             gap: 0.05em;
         }
-        .token-row-input { font-size: 14px; }
-        .token-row-input .glyph { width: 1.1em; height: 1.1em; }
-        .token-row-result { font-size: 26px; font-weight: 500; }
-        .token-row-result .glyph { width: 1.3em; height: 1.3em; }
+        .token-row-input { font-size: 18px; }
+        .token-row-input .glyph { width: 1.3em; height: 1.3em; }
+        .token-row-result { font-size: 30px; font-weight: 500; }
+        .token-row-result .glyph { width: 1.5em; height: 1.5em; }
 
         /* --- Glyphen ---
-           Strichstärke in absoluten Pixeln (vector-effect), nicht
-           viewBox-relativ — Flutter `paintDozenalDigitAt` zeichnet ebenfalls
-           absolut 2.5 dp, unabhängig von der Button-Grösse. So bleibt die
-           Linienstärke konsistent vom Display (gross) bis zur Taste (mittel)
-           bis zum potenziellen Mini-Indikator (klein). */
+           Strichstärke in absoluten Pixeln (vector-effect: non-scaling-stroke),
+           damit die Linienstärke vom Display (gross) bis zur Taste (mittel)
+           bis zum Mini-Indikator (klein) optisch konsistent bleibt. Flutter
+           `paintDozenalDigitAt` zeichnet ebenfalls absolut, nur die Stärke
+           selbst ist hier höher als der 2.5-Default in Flutter, weil das
+           Web-Rendering bei diesen Pixelgrössen mehr Anti-Aliasing-Glättung
+           gegen die Linie schluckt. */
         .glyph {
             width: 1.2em;
             height: 1.2em;
             stroke: currentColor;
             fill: none;
-            stroke-width: 2.5;
+            stroke-width: 4;
             stroke-linecap: round;
             stroke-linejoin: round;
             vertical-align: middle;
+            color: currentColor;
         }
         .glyph, .glyph * { vector-effect: non-scaling-stroke; }
-        .token-row-result .glyph { width: 1.4em; height: 1.4em; }
+        /* Display-Glyphen (Resultat) noch eine Spur grösser. */
+        .token-row-result .glyph { width: 1.5em; height: 1.5em; }
 
         /* --- Punktuation/Operatoren als Text --- */
         .punct {
@@ -296,41 +302,51 @@
         .token-btn-digit { color: var(--digit-normal); }
         .token-btn-digit:active { color: var(--digit-pressed); }
         .token-btn-digit .glyph {
-            width: 1.9em;
-            height: 1.9em;
+            width: 2.4em;
+            height: 2.4em;
         }
 
         .token-btn-op { color: var(--op-normal); }
         .token-btn-op:active { color: var(--op-pressed); }
+        .token-btn-op .glyph {
+            /* Operator-SVG (op-add, op-sub, op-pow, etc.) füllt den Button
+               kräftiger aus als die Zifferglyphen, weil die Geometrie zarter ist. */
+            width: 2.2em;
+            height: 2.2em;
+        }
 
         .token-btn-nav {
             color: var(--op-normal);
             font-size: 14px;
         }
         .token-btn-nav:active { color: var(--op-pressed); }
+        .token-btn-nav .glyph {
+            width: 1.8em;
+            height: 1.8em;
+        }
 
         .token-btn-sys {
             color: var(--digit-normal);
-            font-size: 13px;
+            font-size: 16px;
         }
         .token-btn-sys:active { color: var(--op-pressed); }
 
         .token-btn-mem {
             color: var(--digit-pressed);    /* Gold-Akzent für Memory */
-            font-size: 13px;
+            font-size: 15px;
             font-weight: 500;
         }
         .token-btn-mem:active { color: var(--op-pressed); }
 
         .token-btn-const {
             color: var(--op-normal);
-            font-size: 16px;
+            font-size: 18px;
         }
         .token-btn-const:active { color: var(--op-pressed); }
 
         .token-btn-fn {
             color: var(--op-normal);
-            font-size: 13px;
+            font-size: 15px;
         }
         .token-btn-fn:active { color: var(--op-pressed); }
 

@@ -10,83 +10,70 @@
 //! sehen Unicode-Operatoren nativ) und entspricht visuell der
 //! egui-Variante.
 
-use crate::glyph::Glyph;
+use crate::glyph::{Glyph, TokenSvgGlyph, token_svg_id};
 use dozenal_core::{CalcToken, DozenalDigit};
 use leptos::prelude::*;
 
 /// Rendert das Label für eine Taste oder einen Buffer-Eintrag.
-/// Für `Digit` fällt der Aufruf an `Glyph` zurück.
+/// Digits → `Glyph`. Tokens mit SVG-Symbol (`+ − × ÷`, `x^`, `√`, `log`,
+/// `⊕`, `◀`, `▶`) → `TokenSvgGlyph`. Alles andere → Text-Label.
 pub fn token_label(t: &CalcToken) -> AnyView {
+    if let CalcToken::Digit(d) = t {
+        return view! { <Glyph digit={*d}/> }.into_any();
+    }
+    if let Some(id) = token_svg_id(t) {
+        let aria = token_aria(t);
+        return view! { <TokenSvgGlyph symbol_id=id aria=aria/> }.into_any();
+    }
     match t {
-        CalcToken::Digit(d) => view! { <Glyph digit={*d}/> }.into_any(),
-        CalcToken::Add => text_label("+", "op").into_any(),
-        CalcToken::Sub => text_label("−", "op").into_any(),
-        CalcToken::Mul => text_label("×", "op").into_any(),
-        CalcToken::Div => text_label("÷", "op").into_any(),
-        CalcToken::Negate => text_label("−", "neg").into_any(),
-        CalcToken::OplusBotLeft => text_label("⊕", "op").into_any(),
-        CalcToken::ExpTopRight => view! {
-            <span class="tok composite">
-                <span class="tok-base">"x"</span>
-                <span class="tok-super">"y"</span>
-            </span>
-        }
-        .into_any(),
-        CalcToken::RootTopLeft => text_label("√", "op").into_any(),
-        CalcToken::LogBotRight => view! {
-            <span class="tok composite">
-                <span class="tok-base">"log"</span>
-                <span class="tok-sub">"n"</span>
-            </span>
-        }
-        .into_any(),
-        CalcToken::Sin => text_label("sin", "fn").into_any(),
-        CalcToken::Cos => text_label("cos", "fn").into_any(),
-        CalcToken::Tan => text_label("tan", "fn").into_any(),
-        CalcToken::Cot => text_label("cot", "fn").into_any(),
-        CalcToken::ArcSin => text_label("sin⁻¹", "fn").into_any(),
-        CalcToken::ArcCos => text_label("cos⁻¹", "fn").into_any(),
-        CalcToken::ArcTan => text_label("tan⁻¹", "fn").into_any(),
-        CalcToken::ArcCot => text_label("cot⁻¹", "fn").into_any(),
-        CalcToken::Sinh => text_label("sinh", "fn").into_any(),
-        CalcToken::Cosh => text_label("cosh", "fn").into_any(),
-        CalcToken::Tanh => text_label("tanh", "fn").into_any(),
-        CalcToken::Coth => text_label("coth", "fn").into_any(),
-        CalcToken::ArSinh => text_label("arsinh", "fn").into_any(),
-        CalcToken::ArCosh => text_label("arcosh", "fn").into_any(),
-        CalcToken::ArTanh => text_label("artanh", "fn").into_any(),
-        CalcToken::ArCoth => text_label("arcoth", "fn").into_any(),
-        CalcToken::Factorial => text_label("n!", "fn").into_any(),
-        CalcToken::AbsVal => text_label("|x|", "fn").into_any(),
-        CalcToken::Reciprocal => text_label("1∕x", "fn").into_any(),
-        CalcToken::Mod => text_label("mod", "fn").into_any(),
-        CalcToken::ParenOpen => text_label("(", "paren").into_any(),
-        CalcToken::ParenClose => text_label(")", "paren").into_any(),
-        CalcToken::TriangleLeft => text_label("◀", "nav").into_any(),
-        CalcToken::TriangleRight => text_label("▶", "nav").into_any(),
-        CalcToken::AC => text_label("AC", "ac").into_any(),
-        CalcToken::Del => text_label("⌫", "sys").into_any(),
-        CalcToken::Decimal => text_label(".", "punct").into_any(),
-        CalcToken::Equals => text_label("=", "equals").into_any(),
-        CalcToken::Expand => text_label("▾▾", "sys").into_any(),
-        CalcToken::Sto => text_label("STO", "mem").into_any(),
-        CalcToken::Rcl => text_label("RCL", "mem").into_any(),
-        CalcToken::Mc => text_label("MC", "mem").into_any(),
-        CalcToken::Ans => text_label("Ans", "mem").into_any(),
-        CalcToken::ConstPi => text_label("π", "const").into_any(),
-        CalcToken::ConstE => text_label("e", "const").into_any(),
-        CalcToken::ConstPhi => text_label("φ", "const").into_any(),
-        CalcToken::ConstSqrt2 => text_label("√2", "const").into_any(),
-        CalcToken::DozDec => text_label("Doz↔Dez", "mode").into_any(),
-        CalcToken::Drg => text_label("DRG", "mode").into_any(),
-        CalcToken::Info => text_label("Info", "mode").into_any(),
-        CalcToken::Close => text_label("Schliessen", "mode").into_any(),
-        CalcToken::RatLit(_) => text_label("Ans", "mem").into_any(),
+        CalcToken::Sin => text_label("sin", "fn"),
+        CalcToken::Cos => text_label("cos", "fn"),
+        CalcToken::Tan => text_label("tan", "fn"),
+        CalcToken::Cot => text_label("cot", "fn"),
+        CalcToken::ArcSin => text_label("sin⁻¹", "fn"),
+        CalcToken::ArcCos => text_label("cos⁻¹", "fn"),
+        CalcToken::ArcTan => text_label("tan⁻¹", "fn"),
+        CalcToken::ArcCot => text_label("cot⁻¹", "fn"),
+        CalcToken::Sinh => text_label("sinh", "fn"),
+        CalcToken::Cosh => text_label("cosh", "fn"),
+        CalcToken::Tanh => text_label("tanh", "fn"),
+        CalcToken::Coth => text_label("coth", "fn"),
+        CalcToken::ArSinh => text_label("sinh⁻¹", "fn"),
+        CalcToken::ArCosh => text_label("cosh⁻¹", "fn"),
+        CalcToken::ArTanh => text_label("tanh⁻¹", "fn"),
+        CalcToken::ArCoth => text_label("coth⁻¹", "fn"),
+        CalcToken::Factorial => text_label("n!", "fn"),
+        CalcToken::AbsVal => text_label("|x|", "fn"),
+        CalcToken::Reciprocal => text_label("1∕x", "fn"),
+        CalcToken::Mod => text_label("mod", "fn"),
+        CalcToken::ParenOpen => text_label("(", "paren"),
+        CalcToken::ParenClose => text_label(")", "paren"),
+        CalcToken::AC => text_label("AC", "ac"),
+        CalcToken::Del => text_label("⌫", "sys"),
+        CalcToken::Decimal => text_label(".", "punct"),
+        CalcToken::Equals => text_label("=", "equals"),
+        CalcToken::Expand => text_label("▾▾", "sys"),
+        CalcToken::Sto => text_label("STO", "mem"),
+        CalcToken::Rcl => text_label("RCL", "mem"),
+        CalcToken::Mc => text_label("MC", "mem"),
+        CalcToken::Ans => text_label("Ans", "mem"),
+        CalcToken::ConstPi => text_label("π", "const"),
+        CalcToken::ConstE => text_label("e", "const"),
+        CalcToken::ConstPhi => text_label("φ", "const"),
+        CalcToken::ConstSqrt2 => text_label("√2", "const"),
+        CalcToken::DozDec => text_label("Doz↔Dez", "mode"),
+        CalcToken::Drg => text_label("DRG", "mode"),
+        CalcToken::Info => text_label("Info", "mode"),
+        CalcToken::Close => text_label("Schliessen", "mode"),
+        CalcToken::RatLit(_) => text_label("Ans", "mem"),
+        // Folgende Cases werden bereits oben via early-return abgefangen
+        // (Digit + SVG-Operatoren), bleiben hier nur als Pflichtcatch-all.
+        _ => text_label("", "punct"),
     }
 }
 
-fn text_label(text: &'static str, kind: &'static str) -> impl IntoView {
-    view! { <span class={format!("tok tok-{kind}")}>{text}</span> }
+fn text_label(text: &'static str, kind: &'static str) -> AnyView {
+    view! { <span class={format!("tok tok-{kind}")}>{text}</span> }.into_any()
 }
 
 /// Aria-Label für Screenreader (statt visueller Symbole).

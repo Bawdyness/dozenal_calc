@@ -1,5 +1,6 @@
 /target
 /dist
+dist/
 Cargo.lock
 CLAUDE.md
 DESIGN_NOTES.md

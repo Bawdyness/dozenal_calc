@@ -3,19 +3,24 @@
 
 //! Leptos-Web-Frontend für den Dozenal-Taschenrechner.
 //!
-//! Phase C: Hauptkeypad (Sets 1–5 + `=`-Bar) ist live, plus
-//! Hardware-Tastatur-Mapping. Overlay (Sets 6–10), Info-Surface
-//! und PWA-Polish folgen in den Phasen D, E und F.
+//! Phase E: Hash-Routing + Info-Surface live. Routen werden über
+//! `router::use_route` aus `window.location.hash` parsed; die `App`-
+//! Komponente wechselt zwischen Calc und Info per `match`. Die
+//! Hardware-Tastatur wirkt nur in der Calc-Route.
 
 mod display;
 mod glyph;
+mod info;
 mod keypad;
+mod router;
 mod state;
 mod token_glyph;
 
 use crate::display::TwoLineDisplay;
 use crate::glyph::GlyphSprite;
+use crate::info::InfoView;
 use crate::keypad::MainKeypad;
+use crate::router::{Route, use_route};
 use crate::state::CalcState;
 use dozenal_core::{CalcToken, DozenalDigit};
 use leptos::prelude::*;
@@ -31,18 +36,47 @@ fn main() {
 fn App() -> impl IntoView {
     let state = CalcState::default();
     provide_context(state);
+    let route = use_route();
 
     Effect::new(move |_| {
         attach_keyboard_handler(&state);
         hide_splash();
     });
 
+    // Browser-Tab-Titel an die Route koppeln.
+    Effect::new(move |_| {
+        let title = match route.get() {
+            Route::Calc => "Dozenal Calc".to_string(),
+            Route::Info { .. } => "Info · Dozenal Calc".to_string(),
+        };
+        if let Some(doc) = web_sys::window().and_then(|w| w.document()) {
+            doc.set_title(&title);
+        }
+    });
+
+    let anchor_signal = Signal::derive(move || match route.get() {
+        Route::Info { anchor } => anchor,
+        Route::Calc => None,
+    });
+
     view! {
         <GlyphSprite/>
+        {move || match route.get() {
+            Route::Calc => view! { <CalcView/> }.into_any(),
+            Route::Info { .. } => view! {
+                <InfoView anchor=anchor_signal/>
+            }.into_any(),
+        }}
+    }
+}
+
+#[component]
+fn CalcView() -> impl IntoView {
+    view! {
         <main class="app">
             <header class="app-header">
                 <h1 class="app-title">"Dozenal Calc"</h1>
-                <p class="app-subtitle">"Leptos-Vorschau · Phase C"</p>
+                <p class="app-subtitle">"Leptos-Vorschau · Phase E"</p>
             </header>
             <TwoLineDisplay/>
             <MainKeypad/>

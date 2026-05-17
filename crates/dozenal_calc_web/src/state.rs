@@ -348,8 +348,8 @@ impl CalcState {
                 self.overlay_open.set(false);
             }
             CalcToken::Info => {
-                // Info-Surface kommt in Phase E (Hash-Routing).
                 self.overlay_open.set(false);
+                crate::router::navigate(&crate::router::Route::Info { anchor: None });
             }
             // Trig + Hyperbolic: Doppelklick toggelt zur Inversen.
             CalcToken::Sin

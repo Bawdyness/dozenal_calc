@@ -15,17 +15,17 @@
     <link data-trunk rel="copy-file" href="sw.js" />
     <style>
         :root {
-            /* Design-Tokens aus research/design_tokens.md — 1:1 zu den
-               Konstanten in /home/eric/dozenal_calc_flutter/lib/keypad.dart. */
-            --bg: #1f1f1f;
-            --bg-display: rgba(0, 0, 0, 0.45);
+            /* Design-Tokens — Hintergrund deutlich dunkler als das alte
+               Flutter-Grau, damit die Glyphen-Strokes mehr Kontrast haben. */
+            --bg: #0e0e0e;
+            --bg-display: rgba(0, 0, 0, 0.7);
             --bg-elev: rgba(255, 255, 255, 0.04);
-            --fg: #e6e6e6;
-            --fg-dim: #888;
+            --fg: #f0f0f0;
+            --fg-dim: #a8a8a8;
             --fg-faint: #555;
             /* Token-Farben (Flutter _k*-Konstanten) */
             --digit-normal: #ffffff;        /* _kDigitNormal */
-            --digit-pressed: #ffd700;       /* _kDigitPressed (egui GOLD) */
+            --digit-pressed: #ffd700;       /* _kDigitPressed */
             --digit-disabled: #606060;      /* _kDigitDisabled */
             --op-normal: #98c8ff;           /* _kOpNormal */
             --op-pressed: #ff9090;          /* _kOpPressed */
@@ -33,12 +33,12 @@
             --ac: #ff4040;                  /* _kAc */
             --ac-pressed: #ff8080;          /* _kAcPressed */
             --border: #505050;              /* _kBorder */
-            --border-disabled: #303030;     /* in Flutter inline definiert */
+            --border-disabled: #303030;
             /* Spezialfarben */
-            --accent: var(--op-normal);     /* Legacy-Alias */
-            --gold: var(--digit-pressed);   /* Legacy-Alias */
+            --accent: var(--op-normal);
+            --gold: var(--digit-pressed);
             --err: #ff6464;
-            --separator: #333;
+            --separator: #2a2a2a;
         }
         * { box-sizing: border-box; }
         html, body {
@@ -145,7 +145,8 @@
         }
         /* Eingabe-Zeile hell und gut lesbar — kein dim mehr.
            Resultat-Zeile etwas heller noch (volles Weiss). */
-        .display-input { justify-content: flex-start; color: #c8c8c8; }
+        /* Beide Zeilen in voller Helligkeit; Hierarchie über Schriftgrösse. */
+        .display-input { justify-content: flex-start; color: var(--fg); }
         .display-result { justify-content: flex-end; color: var(--digit-normal); }
         .display-separator {
             border-top: 0.5px solid var(--separator);
@@ -156,12 +157,14 @@
         .token-row {
             display: inline-flex;
             align-items: center;
-            gap: 0.05em;
+            gap: 0.1em;
         }
-        .token-row-input { font-size: 18px; }
-        .token-row-input .glyph { width: 1.3em; height: 1.3em; }
-        .token-row-result { font-size: 30px; font-weight: 500; }
-        .token-row-result .glyph { width: 1.5em; height: 1.5em; }
+        /* Eingabe in fast voller Helligkeit, nur klein — der Unterschied
+           zum Resultat soll Grösse sein, nicht Helligkeit. */
+        .token-row-input { font-size: 20px; font-weight: 500; color: var(--fg); }
+        .token-row-input .glyph { width: 1.4em; height: 1.4em; }
+        .token-row-result { font-size: 34px; font-weight: 600; }
+        .token-row-result .glyph { width: 1.55em; height: 1.55em; }
 
         /* --- Glyphen ---
            Strichstärke in absoluten Pixeln (vector-effect: non-scaling-stroke),
@@ -176,15 +179,20 @@
             height: 1.2em;
             stroke: currentColor;
             fill: none;
-            stroke-width: 4;
+            stroke-width: 6;
             stroke-linecap: round;
             stroke-linejoin: round;
             vertical-align: middle;
             color: currentColor;
+            /* `overflow: visible` verhindert das Beschneiden der Strokes an den
+               viewBox-Kanten — sonst sehen Vollkreise oben/unten wie gerade
+               abgeschnittene Linien aus, weil die Strokebreite über y=0/y=100
+               hinausragt. */
+            overflow: visible;
         }
         .glyph, .glyph * { vector-effect: non-scaling-stroke; }
         /* Display-Glyphen (Resultat) noch eine Spur grösser. */
-        .token-row-result .glyph { width: 1.5em; height: 1.5em; }
+        .token-row-result .glyph { width: 1.55em; height: 1.55em; }
 
         /* --- Punktuation/Operatoren als Text --- */
         .punct {
@@ -264,7 +272,7 @@
            nur die Glyph-/Text-Farbe (Flutter nutzt `NoSplash.splashFactory`,
            also kein Hintergrund-Ripple). */
         .token-btn {
-            min-height: 44px;
+            min-height: 48px;
             padding: 6px 4px;
             background: transparent;
             border: 1px solid var(--border);
@@ -272,7 +280,7 @@
             color: var(--digit-normal);
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             font-size: 14px;
-            font-weight: 500;
+            font-weight: 700;          /* aggressivere Präsenz */
             cursor: pointer;
             display: flex;
             align-items: center;
@@ -282,6 +290,7 @@
             -webkit-user-select: none;
             user-select: none;
             line-height: 1;
+            overflow: visible;          /* SVG-Strokes nicht beschneiden */
         }
         /* Subtiler Desktop-Hover (auf Touch-Devices irrelevant). */
         @media (hover: hover) {
@@ -302,17 +311,15 @@
         .token-btn-digit { color: var(--digit-normal); }
         .token-btn-digit:active { color: var(--digit-pressed); }
         .token-btn-digit .glyph {
-            width: 2.4em;
-            height: 2.4em;
+            width: 2.7em;
+            height: 2.7em;
         }
 
         .token-btn-op { color: var(--op-normal); }
         .token-btn-op:active { color: var(--op-pressed); }
         .token-btn-op .glyph {
-            /* Operator-SVG (op-add, op-sub, op-pow, etc.) füllt den Button
-               kräftiger aus als die Zifferglyphen, weil die Geometrie zarter ist. */
-            width: 2.2em;
-            height: 2.2em;
+            width: 2.4em;
+            height: 2.4em;
         }
 
         .token-btn-nav {
@@ -321,54 +328,56 @@
         }
         .token-btn-nav:active { color: var(--op-pressed); }
         .token-btn-nav .glyph {
-            width: 1.8em;
-            height: 1.8em;
+            width: 2em;
+            height: 2em;
         }
 
         .token-btn-sys {
             color: var(--digit-normal);
-            font-size: 16px;
+            font-size: 18px;
         }
         .token-btn-sys:active { color: var(--op-pressed); }
 
         .token-btn-mem {
-            color: var(--digit-pressed);    /* Gold-Akzent für Memory */
-            font-size: 15px;
-            font-weight: 500;
+            color: var(--digit-pressed);
+            font-size: 16px;
+            font-weight: 700;
         }
         .token-btn-mem:active { color: var(--op-pressed); }
 
         .token-btn-const {
             color: var(--op-normal);
-            font-size: 18px;
+            font-size: 20px;
         }
         .token-btn-const:active { color: var(--op-pressed); }
 
         .token-btn-fn {
             color: var(--op-normal);
-            font-size: 15px;
+            font-size: 17px;
+            font-weight: 600;
         }
         .token-btn-fn:active { color: var(--op-pressed); }
 
         .token-btn-mode {
             color: var(--fg-dim);
-            font-size: 12px;
-            font-weight: 500;
+            font-size: 13px;
+            font-weight: 600;
             letter-spacing: 0.02em;
         }
         .token-btn-mode:active { color: var(--op-pressed); }
 
         .token-btn-ac {
             color: var(--ac);
-            font-weight: 600;
+            font-weight: 800;
+            font-size: 16px;
         }
         .token-btn-ac:active { color: var(--ac-pressed); }
 
         .token-btn-equals {
             color: var(--equals);
-            font-weight: 600;
-            font-size: 20px;
-            min-height: 52px;
+            font-weight: 800;
+            font-size: 24px;
+            min-height: 56px;
         }
         .token-btn-equals:active { color: var(--op-pressed); }
 

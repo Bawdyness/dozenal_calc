@@ -151,4 +151,314 @@ impl CalcState {
         self.result_cursor_pos.set(0);
         self.result_field_active.set(true);
     }
+
+    /// True wenn ein Tap auf `token` den vorherigen Buffer-Token zur Inversen
+    /// umtoggeln würde — gemeinsame Quelle für den Armed-Marker (Anzeige) und
+    /// die tatsächliche Umschaltung in `handle_click`.
+    pub fn is_armed(&self, token: &CalcToken) -> bool {
+        let cp = self.cursor_pos.get();
+        if cp == 0 {
+            return false;
+        }
+        self.input_buffer
+            .with(|buf| inverse_swap(token, &buf[cp - 1]).is_some())
+    }
+
+    /// True wenn das Zahl-Literal unter dem Cursor schon einen Dezimalpunkt
+    /// enthält. Bidirektionaler Walk, damit auch "mitten ins Literal navigiert"
+    /// greift. Verhindert `1.2.3`-Eingaben auf Token-Ebene.
+    fn has_decimal_in_current_literal(&self) -> bool {
+        let cp = self.cursor_pos.get();
+        self.input_buffer.with(|buf| {
+            let mut i = cp;
+            while i > 0 {
+                i -= 1;
+                match &buf[i] {
+                    CalcToken::Decimal => return true,
+                    CalcToken::Digit(_) => {}
+                    _ => return false,
+                }
+            }
+            let mut i = cp;
+            while i < buf.len() {
+                match &buf[i] {
+                    CalcToken::Decimal => return true,
+                    CalcToken::Digit(_) => i += 1,
+                    _ => return false,
+                }
+            }
+            false
+        })
+    }
+
+    /// Strukturell 1:1 zu `crates/dozenal_calc_app/src/input.rs::handle_click`,
+    /// nur über Signals statt direkter Feldzuweisung.
+    pub fn handle_click(&self, token: CalcToken) {
+        // Error-Guard: bei aktivem Fehler reagiert nur AC. Andere Tokens
+        // räumen den Fehler weg und werden danach normal verarbeitet —
+        // ausser Mode/Navigation, die bleiben blockiert.
+        if self.error_msg.with(Option::is_some) && !matches!(token, CalcToken::AC) {
+            if matches!(
+                token,
+                CalcToken::Drg
+                    | CalcToken::DozDec
+                    | CalcToken::Info
+                    | CalcToken::TriangleLeft
+                    | CalcToken::TriangleRight
+                    | CalcToken::Expand
+                    | CalcToken::Close
+            ) {
+                return;
+            }
+            self.error_msg.set(None);
+            self.input_buffer.set(Vec::new());
+            self.result_buffer
+                .set(vec![CalcToken::Digit(DozenalDigit::D0)]);
+            self.result_period_start.set(None);
+            self.result_period_len.set(0);
+            self.result_period_capped.set(false);
+            self.cursor_pos.set(0);
+            self.result_field_active.set(false);
+        }
+
+        let is_operator = matches!(
+            token,
+            CalcToken::Add
+                | CalcToken::Sub
+                | CalcToken::Mul
+                | CalcToken::Div
+                | CalcToken::ExpTopRight
+                | CalcToken::RootTopLeft
+                | CalcToken::OplusBotLeft
+                | CalcToken::LogBotRight
+        );
+
+        // Nach `=`: erste Eingabe (außer Mode/Nav/Equals/AC) startet einen
+        // neuen Ausdruck. Bei Operator-Start: Ans auto-injection.
+        let starts_new_expr = self.result_field_active.get()
+            && !matches!(
+                token,
+                CalcToken::TriangleLeft
+                    | CalcToken::TriangleRight
+                    | CalcToken::AC
+                    | CalcToken::Equals
+                    | CalcToken::Drg
+                    | CalcToken::DozDec
+                    | CalcToken::Info
+                    | CalcToken::Expand
+                    | CalcToken::Close
+                    | CalcToken::Sto
+                    | CalcToken::Mc
+            );
+        if starts_new_expr {
+            let mut new_buf: Vec<CalcToken> = Vec::new();
+            if is_operator {
+                if let Some(r) = self.last_ans.get() {
+                    new_buf.push(CalcToken::RatLit(r));
+                } else {
+                    new_buf.extend(self.result_buffer.get());
+                }
+            }
+            let new_cursor = new_buf.len();
+            self.input_buffer.set(new_buf);
+            self.cursor_pos.set(new_cursor);
+        }
+
+        // Jede Aktion außer Cursor-Arrows lässt die Aktivität zum Input-Feld zurückkehren.
+        if !matches!(token, CalcToken::TriangleLeft | CalcToken::TriangleRight) {
+            self.result_field_active.set(false);
+        }
+
+        self.dispatch(token);
+    }
+
+    fn dispatch(&self, token: CalcToken) {
+        match token {
+            CalcToken::Digit(d) => self.insert_at_cursor(CalcToken::Digit(d)),
+            CalcToken::Decimal => {
+                if !self.has_decimal_in_current_literal() {
+                    self.insert_at_cursor(CalcToken::Decimal);
+                }
+            }
+            CalcToken::Equals => self.calculate_result(),
+            CalcToken::AC => {
+                self.input_buffer.set(Vec::new());
+                self.result_buffer
+                    .set(vec![CalcToken::Digit(DozenalDigit::D0)]);
+                self.result_period_start.set(None);
+                self.result_period_len.set(0);
+                self.result_period_capped.set(false);
+                self.cursor_pos.set(0);
+                self.error_msg.set(None);
+                self.rat_collapsed.set(false);
+            }
+            CalcToken::Del => {
+                let cp = self.cursor_pos.get();
+                if cp > 0 {
+                    self.input_buffer.update(|buf| {
+                        buf.remove(cp - 1);
+                    });
+                    self.cursor_pos.set(cp - 1);
+                }
+            }
+            CalcToken::TriangleLeft => {
+                if self.result_field_active.get() {
+                    let pos = self.result_cursor_pos.get();
+                    if pos > 0 {
+                        self.result_cursor_pos.set(pos - 1);
+                    }
+                } else {
+                    let cp = self.cursor_pos.get();
+                    if cp > 0 {
+                        self.cursor_pos.set(cp - 1);
+                    }
+                }
+            }
+            CalcToken::TriangleRight => {
+                if self.result_field_active.get() {
+                    let pos = self.result_cursor_pos.get();
+                    let max = self.result_buffer.with(Vec::len);
+                    if pos < max {
+                        self.result_cursor_pos.set(pos + 1);
+                    }
+                } else {
+                    let cp = self.cursor_pos.get();
+                    let max = self.input_buffer.with(Vec::len);
+                    if cp < max {
+                        self.cursor_pos.set(cp + 1);
+                    }
+                }
+            }
+            CalcToken::Expand => self.overlay_open.update(|b| *b = !*b),
+            CalcToken::Close => self.overlay_open.set(false),
+            CalcToken::Drg => {
+                self.angle_mode.update(|am| *am = am.next());
+                self.overlay_open.set(false);
+            }
+            CalcToken::Info | CalcToken::DozDec => {
+                // Info/Doz↔Dez wirken in Phase E/D — hier nur Overlay schliessen.
+                self.overlay_open.set(false);
+            }
+            // Trig + Hyperbolic: Doppelklick toggelt zur Inversen.
+            CalcToken::Sin
+            | CalcToken::Cos
+            | CalcToken::Tan
+            | CalcToken::Cot
+            | CalcToken::ArcSin
+            | CalcToken::ArcCos
+            | CalcToken::ArcTan
+            | CalcToken::ArcCot
+            | CalcToken::Sinh
+            | CalcToken::Cosh
+            | CalcToken::Tanh
+            | CalcToken::Coth
+            | CalcToken::ArSinh
+            | CalcToken::ArCosh
+            | CalcToken::ArTanh
+            | CalcToken::ArCoth => {
+                let cp = self.cursor_pos.get();
+                let swap = if cp > 0 {
+                    self.input_buffer
+                        .with(|buf| inverse_swap(&token, &buf[cp - 1]))
+                } else {
+                    None
+                };
+                if let Some(new_token) = swap {
+                    self.input_buffer.update(|buf| buf[cp - 1] = new_token);
+                } else {
+                    self.insert_at_cursor(token);
+                }
+                self.overlay_open.set(false);
+            }
+            // Memory ops
+            CalcToken::Sto => {
+                self.memory.set(self.result_buffer.get());
+                self.memory_rational.set(self.last_ans.get());
+                self.overlay_open.set(false);
+            }
+            CalcToken::Rcl => {
+                if !self.memory.with(Vec::is_empty) {
+                    if let Some(r) = self.memory_rational.get() {
+                        self.insert_at_cursor(CalcToken::RatLit(r));
+                    } else {
+                        for m in self.memory.get() {
+                            self.insert_at_cursor(m);
+                        }
+                    }
+                }
+                self.overlay_open.set(false);
+            }
+            CalcToken::Mc => {
+                self.memory.set(Vec::new());
+                self.memory_rational.set(None);
+                self.overlay_open.set(false);
+            }
+            CalcToken::Ans => {
+                if let Some(r) = self.last_ans.get() {
+                    self.insert_at_cursor(CalcToken::RatLit(r));
+                } else {
+                    for m in self.result_buffer.get() {
+                        self.insert_at_cursor(m);
+                    }
+                }
+                self.overlay_open.set(false);
+            }
+            // Alle anderen Tokens (Add/Sub/Mul/Div/Op-Set/Parens/Konstanten/n!/|x|/1/x/mod):
+            // einfach einfügen; Overlay schliessen, falls überlay-spezifisch.
+            other => {
+                let close_overlay = matches!(
+                    other,
+                    CalcToken::Factorial
+                        | CalcToken::AbsVal
+                        | CalcToken::Reciprocal
+                        | CalcToken::Mod
+                        | CalcToken::ConstPi
+                        | CalcToken::ConstE
+                        | CalcToken::ConstPhi
+                        | CalcToken::ConstSqrt2
+                );
+                self.insert_at_cursor(other);
+                if close_overlay {
+                    self.overlay_open.set(false);
+                }
+            }
+        }
+    }
+
+    fn insert_at_cursor(&self, token: CalcToken) {
+        let cp = self.cursor_pos.get();
+        self.input_buffer.update(|buf| {
+            buf.insert(cp, token);
+        });
+        self.cursor_pos.set(cp + 1);
+    }
+}
+
+/// Gibt den Inversen-Partner für eine Funktions-Token-Doppelklick-Toggle-Paarung
+/// zurück, oder `None` wenn keine Inverse definiert ist. Identisch zur Variante
+/// in `crates/dozenal_calc_app/src/input.rs::inverse_swap`.
+fn inverse_swap(token: &CalcToken, prev: &CalcToken) -> Option<CalcToken> {
+    use CalcToken::{
+        ArCosh, ArCoth, ArSinh, ArTanh, ArcCos, ArcCot, ArcSin, ArcTan, Cos, Cosh, Cot, Coth, Sin,
+        Sinh, Tan, Tanh,
+    };
+    Some(match (token, prev) {
+        (Sin, Sin) => ArcSin,
+        (Sin, ArcSin) => Sin,
+        (Cos, Cos) => ArcCos,
+        (Cos, ArcCos) => Cos,
+        (Tan, Tan) => ArcTan,
+        (Tan, ArcTan) => Tan,
+        (Cot, Cot) => ArcCot,
+        (Cot, ArcCot) => Cot,
+        (Sinh, Sinh) => ArSinh,
+        (Sinh, ArSinh) => Sinh,
+        (Cosh, Cosh) => ArCosh,
+        (Cosh, ArCosh) => Cosh,
+        (Tanh, Tanh) => ArTanh,
+        (Tanh, ArTanh) => Tanh,
+        (Coth, Coth) => ArCoth,
+        (Coth, ArCoth) => Coth,
+        _ => return None,
+    })
 }

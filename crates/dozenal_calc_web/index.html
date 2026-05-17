@@ -196,6 +196,121 @@
             font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
             font-weight: 600;
         }
+
+        /* --- Keypad --- */
+        .keypad {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .keypad-digits {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+        .keypad-ops, .keypad-system {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+        }
+        .keypad-separator {
+            border-top: 1px solid var(--separator);
+            margin: 2px 0;
+        }
+
+        /* --- Token-Button (alle Tasten) --- */
+        .token-btn {
+            min-height: 44px;
+            padding: 8px 4px;
+            background: var(--bg-elev);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--fg);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-size: 15px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 80ms, border-color 80ms;
+            position: relative;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        .token-btn:active {
+            background: rgba(255, 255, 255, 0.10);
+        }
+
+        /* --- Varianten --- */
+        .token-btn-digit {
+            color: var(--fg);
+        }
+        .token-btn-digit:active {
+            color: var(--gold);
+        }
+        .token-btn-digit .glyph {
+            width: 1.8em;
+            height: 1.8em;
+            stroke-width: 5;
+        }
+        .token-btn-op {
+            color: var(--accent);
+        }
+        .token-btn-op:active {
+            color: #ff9090; /* LIGHT_RED-Pendant */
+        }
+        .token-btn-nav {
+            color: var(--accent);
+            font-size: 14px;
+        }
+        .token-btn-sys {
+            color: var(--fg);
+            font-size: 13px;
+        }
+        .token-btn-ac {
+            color: var(--ac);
+            font-weight: 600;
+        }
+        .token-btn-ac:active {
+            background: rgba(255, 64, 64, 0.15);
+        }
+        .token-btn-equals {
+            color: var(--equals);
+            font-weight: 600;
+            font-size: 20px;
+            min-height: 52px;
+        }
+        .token-btn-equals:active {
+            background: rgba(140, 220, 140, 0.18);
+        }
+
+        /* --- Armed-Marker --- */
+        .token-btn.armed::after {
+            content: "";
+            position: absolute;
+            top: 4px;
+            right: 6px;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--gold);
+        }
+
+        /* --- Composite-Tokens (x^y, log_n) --- */
+        .tok.composite {
+            display: inline-flex;
+            align-items: baseline;
+        }
+        .tok-super {
+            font-size: 0.7em;
+            vertical-align: super;
+            margin-left: 0.1em;
+        }
+        .tok-sub {
+            font-size: 0.7em;
+            vertical-align: sub;
+            margin-left: 0.1em;
+        }
     </style>
 </head>
 <body>

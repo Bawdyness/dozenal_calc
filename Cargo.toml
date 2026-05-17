@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/dozenal_core", "crates/dozenal_calc_app"]
+members = ["crates/dozenal_core", "crates/dozenal_calc_app", "crates/dozenal_calc_web"]
 default-members = ["crates/dozenal_calc_app"]
 resolver = "2"
 

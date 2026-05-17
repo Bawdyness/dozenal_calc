@@ -28,9 +28,13 @@ jobs:
       - name: Install Trunk
         uses: jetli/trunk-action@v0.5.0
 
-      - name: Build WebApp with Trunk
+      - name: Build egui WebApp (root)
         working-directory: crates/dozenal_calc_app
         run: trunk build --release --public-url /dozenal_calc/ --dist ../../dist
+
+      - name: Build Leptos preview (sub-path)
+        working-directory: crates/dozenal_calc_web
+        run: trunk build --release --public-url /dozenal_calc/preview/ --dist ../../dist/preview
 
       - name: Upload artifact for Pages
         uses: actions/upload-pages-artifact@v3

@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="utf-8" />
+    <title>Dozenal Calc</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#1a1a1a" />
+    <meta name="description" content="Wissenschafts-Taschenrechner mit nativer Basis-12-Arithmetik und eigenen Ziffer-Glyphen." />
+    <link data-trunk rel="rust" href="Cargo.toml" />
+    <style>
+        :root {
+            --bg: #1a1a1a;
+            --fg: #e6e6e6;
+            --accent: #98c8ff;
+            --muted: #888;
+            --dim: #666;
+        }
+        html, body {
+            height: 100vh;
+            height: 100dvh;
+            width: 100vw;
+            margin: 0;
+            padding: 0;
+            padding-bottom: env(safe-area-inset-bottom, 0);
+            box-sizing: border-box;
+            background: var(--bg);
+            color: var(--fg);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            overflow: hidden;
+            touch-action: manipulation;
+        }
+        #splash {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg);
+            color: var(--muted);
+            font-size: 14px;
+            z-index: 1;
+        }
+        #splash[data-mounted] { display: none; }
+    </style>
+</head>
+<body>
+    <div id="splash">Lade Dozenal Calc&hellip;</div>
+</body>
+</html>

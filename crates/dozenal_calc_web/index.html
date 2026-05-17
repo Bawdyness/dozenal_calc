@@ -9,20 +9,30 @@
     <link data-trunk rel="rust" href="Cargo.toml" />
     <style>
         :root {
-            --bg: #1a1a1a;
+            /* Design-Tokens aus research/design_tokens.md */
+            --bg: #1f1f1f;
+            --bg-display: rgba(0, 0, 0, 0.45);
+            --bg-elev: rgba(255, 255, 255, 0.04);
             --fg: #e6e6e6;
+            --fg-dim: #888;
+            --fg-faint: #555;
             --accent: #98c8ff;
-            --muted: #888;
-            --dim: #666;
+            --equals: #8cdc8c;
+            --ac: #ff4040;
+            --gold: #ffd700;
+            --err: #ff6464;
+            --border: #505050;
+            --separator: #333;
         }
+        * { box-sizing: border-box; }
         html, body {
             height: 100vh;
             height: 100dvh;
             width: 100vw;
             margin: 0;
             padding: 0;
+            padding-top: env(safe-area-inset-top, 0);
             padding-bottom: env(safe-area-inset-bottom, 0);
-            box-sizing: border-box;
             background: var(--bg);
             color: var(--fg);
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -36,11 +46,156 @@
             align-items: center;
             justify-content: center;
             background: var(--bg);
-            color: var(--muted);
+            color: var(--fg-dim);
             font-size: 14px;
             z-index: 1;
         }
         #splash[data-mounted] { display: none; }
+
+        /* --- App-Layout --- */
+        .app {
+            max-width: 720px;
+            margin: 0 auto;
+            padding: 24px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .app-header { margin-bottom: 4px; }
+        .app-title {
+            font-size: 22px;
+            font-weight: 600;
+            margin: 0;
+        }
+        .app-subtitle {
+            font-size: 12px;
+            letter-spacing: 0.06em;
+            color: var(--accent);
+            margin: 4px 0 0;
+        }
+        .phase-note {
+            font-size: 13px;
+            color: var(--fg-dim);
+            margin-top: 16px;
+        }
+        .phase-note code {
+            background: var(--bg-elev);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        }
+
+        /* --- Display --- */
+        .display {
+            position: relative;
+            background: var(--bg-display);
+            border-radius: 8px;
+            padding: 12px 14px 16px;
+            min-height: 120px;
+            display: flex;
+            flex-direction: column;
+        }
+        .display-indicators {
+            position: absolute;
+            top: 8px;
+            left: 12px;
+            right: 12px;
+            display: flex;
+            justify-content: space-between;
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 11px;
+            color: var(--fg-dim);
+            pointer-events: none;
+        }
+        .indicator-memory { color: var(--gold); font-weight: 600; }
+        .indicator-mode-right { display: flex; gap: 8px; }
+        .indicator-numeral { color: var(--accent); }
+
+        .display-line {
+            display: flex;
+            align-items: center;
+            min-height: 44px;
+            margin-top: 16px;
+            overflow: hidden;
+        }
+        .display-input { justify-content: flex-start; color: var(--fg-dim); }
+        .display-result { justify-content: flex-end; color: var(--fg); }
+        .display-separator {
+            border-top: 1px solid var(--separator);
+            margin: 4px 8px;
+        }
+
+        /* --- Token-Reihen im Display --- */
+        .token-row {
+            display: inline-flex;
+            align-items: center;
+            gap: 0;
+        }
+        .token-row-input { font-size: 14px; }
+        .token-row-result { font-size: 22px; }
+
+        /* --- Glyphen --- */
+        .glyph {
+            width: 1.2em;
+            height: 1.2em;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 6;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            vertical-align: middle;
+        }
+        .token-row-result .glyph { width: 1.4em; height: 1.4em; }
+
+        /* --- Punktuation/Operatoren als Text --- */
+        .punct {
+            display: inline-flex;
+            align-items: center;
+            padding: 0 0.1em;
+            line-height: 1;
+        }
+        .punct.op { color: var(--accent); margin: 0 0.15em; }
+        .punct.neg { color: var(--fg); }
+        .punct.placeholder {
+            color: var(--fg-faint);
+            font-style: italic;
+            font-size: 0.75em;
+            padding: 0 0.3em;
+        }
+
+        /* --- State C: Periode mit Überstrich --- */
+        .periodic {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            border-top: 2px solid currentColor;
+            padding-top: 2px;
+            margin-top: -2px;
+        }
+
+        /* --- State C: drei Punkte auf Überstrich-Höhe --- */
+        .ellipsis-raised {
+            display: inline-block;
+            transform: translateY(-0.55em);
+            margin-left: 0.15em;
+            font-size: 0.7em;
+            letter-spacing: 0.05em;
+            color: currentColor;
+        }
+
+        /* --- State B: ≈-Prefix --- */
+        .approx-prefix {
+            color: var(--fg-dim);
+            margin-right: 0.3em;
+            font-size: 0.85em;
+        }
+
+        /* --- Fehler --- */
+        .error-text {
+            color: var(--err);
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-weight: 600;
+        }
     </style>
 </head>
 <body>

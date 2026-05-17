@@ -1,133 +1,7 @@
-// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Eric Naville
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DozenalDigit {
-    D0,
-    D1,
-    D2,
-    D3,
-    D4,
-    D5,
-    D6,
-    D7,
-    D8,
-    D9,
-    D10,
-    D11,
-}
-
-impl DozenalDigit {
-    // Wandelt eine Dozenal-Ziffer in ihren dezimalen Wert um
-    pub fn to_value(self) -> u32 {
-        match self {
-            DozenalDigit::D0 => 0,
-            DozenalDigit::D1 => 1, // Ankerpunkt: Pfeil hoch ^
-            DozenalDigit::D2 => 2,
-            DozenalDigit::D3 => 3,
-            DozenalDigit::D4 => 4, // Ankerpunkt: Pfeil links <
-            DozenalDigit::D5 => 5,
-            DozenalDigit::D6 => 6,
-            DozenalDigit::D7 => 7, // Ankerpunkt: Pfeil rechts >
-            DozenalDigit::D8 => 8,
-            DozenalDigit::D9 => 9,
-            DozenalDigit::D10 => 10, // Ankerpunkt: Pfeil runter v
-            DozenalDigit::D11 => 11,
-        }
-    }
-
-    // Erstellt eine Ziffer aus einem Wert (0-11)
-    pub fn from_value(val: u32) -> Option<Self> {
-        match val {
-            0 => Some(DozenalDigit::D0),
-            1 => Some(DozenalDigit::D1),
-            2 => Some(DozenalDigit::D2),
-            3 => Some(DozenalDigit::D3),
-            4 => Some(DozenalDigit::D4),
-            5 => Some(DozenalDigit::D5),
-            6 => Some(DozenalDigit::D6),
-            7 => Some(DozenalDigit::D7),
-            8 => Some(DozenalDigit::D8),
-            9 => Some(DozenalDigit::D9),
-            10 => Some(DozenalDigit::D10),
-            11 => Some(DozenalDigit::D11),
-            _ => None,
-        }
-    }
-}
-
-// Die Konvertierungs-Einheit
-/// Numerical tolerance used when extracting dozenal digits from an `f64` fractional
-/// part. Floating-point arithmetic introduces drift below this threshold; treating
-/// it as zero avoids spurious trailing-digit noise like `0.6000000000001` showing
-/// up as `0.6` instead of bleeding into a fake periodic tail.
-pub const FRAC_EPSILON: f64 = 0.000_001;
-
-pub struct DozenalConverter;
-
-impl DozenalConverter {
-    /// Exact integer conversion via Horner's method. Returns `None` on i128 overflow.
-    pub fn to_decimal_exact(digits: &[DozenalDigit]) -> Option<i128> {
-        let mut result: i128 = 0;
-        for digit in digits {
-            result = result
-                .checked_mul(12)?
-                .checked_add(i128::from(digit.to_value()))?;
-        }
-        Some(result)
-    }
-
-    // Macht aus einer Liste von Ziffern eine Dezimalzahl
-    // Beispiel: [D1, D0] -> 1 * 12^1 + 0 * 12^0 = 12
-    pub fn to_decimal(digits: &[DozenalDigit]) -> f64 {
-        let mut result = 0.0;
-        for (i, digit) in digits.iter().rev().enumerate() {
-            result += f64::from(digit.to_value()) * 12.0_f64.powi(i as i32);
-        }
-        result
-    }
-
-    // Macht aus einer Dezimalzahl eine Liste von Dozenal-Ziffern
-    // Beispiel: 14 -> 14 / 12 = 1 Rest 2 -> [D1, D2]
-    pub fn from_decimal(value: f64) -> Vec<DozenalDigit> {
-        let mut digits = Vec::new();
-        let mut integer_part = value.floor();
-        if integer_part < 1.0 {
-            digits.push(DozenalDigit::D0);
-        } else {
-            // f64 arithmetic avoids u64 overflow for large results (e.g. 12^20).
-            while integer_part >= 1.0 {
-                let remainder = (integer_part % 12.0) as u32;
-                if let Some(d) = DozenalDigit::from_value(remainder) {
-                    digits.push(d);
-                }
-                integer_part = (integer_part / 12.0).floor();
-            }
-            digits.reverse();
-        }
-        digits
-    }
-
-    pub fn frac_to_digits(mut frac: f64, precision: usize) -> Vec<DozenalDigit> {
-        let mut digits = Vec::new();
-        for _ in 0..precision {
-            frac *= 12.0;
-            let d_val = (frac + FRAC_EPSILON).floor() as u32;
-            if let Some(d) = DozenalDigit::from_value(d_val) {
-                digits.push(d);
-            }
-            frac -= f64::from(d_val);
-            if frac.abs() < FRAC_EPSILON {
-                break;
-            }
-        }
-        digits
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Rational arithmetic
-// ---------------------------------------------------------------------------
+use crate::digit::{DozenalConverter, DozenalDigit};
 
 /// Exact rational number. Invariants: `den > 0`, always in lowest terms.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -136,8 +10,6 @@ pub struct Rational {
     pub den: i128,
 }
 
-// allow: used by Rational methods below and in tests; main.rs wires in at Step 4.
-#[allow(dead_code)]
 fn gcd(a: i128, b: i128) -> i128 {
     let (mut a, mut b) = (a.abs(), b.abs());
     while b != 0 {
@@ -148,8 +20,6 @@ fn gcd(a: i128, b: i128) -> i128 {
     a
 }
 
-// allow: all methods used in tests; main.rs calls them in Step 4.
-#[allow(dead_code)]
 impl Rational {
     /// Returns `None` on division by zero.
     pub fn new(num: i128, den: i128) -> Option<Self> {
@@ -213,7 +83,6 @@ impl Rational {
             return Some(Self::one());
         }
         if exp < 0 {
-            // x^(-n) = (1/x)^n
             if self.num == 0 {
                 return None;
             }
@@ -248,37 +117,26 @@ impl Rational {
     /// `period_digits` is empty iff the expansion is finite.
     /// The period is capped at 100 digits to bound computation.
     pub fn to_dozenal_periodic(self) -> (Vec<DozenalDigit>, Vec<DozenalDigit>, Vec<DozenalDigit>) {
-        let negative = self.num < 0;
         let abs_num = self.num.abs();
-        let den = self.den; // always positive by invariant
+        let den = self.den;
 
         let int_part = abs_num / den;
         let mut rem = abs_num % den;
 
-        let int_digits = if negative {
-            // Caller handles sign; just provide magnitude digits
-            DozenalConverter::from_decimal(int_part as f64)
-        } else {
-            DozenalConverter::from_decimal(int_part as f64)
-        };
+        let int_digits = DozenalConverter::from_decimal(int_part as f64);
 
-        // Long division in base 12 with remainder tracking
         let mut frac_digits: Vec<DozenalDigit> = Vec::new();
-        // Maps remainder → position at which it was first seen
         let mut seen: std::collections::HashMap<i128, usize> = std::collections::HashMap::new();
 
         loop {
             if rem == 0 {
-                // Finite expansion
                 return (int_digits, frac_digits, Vec::new());
             }
             if let Some(&first_pos) = seen.get(&rem) {
-                // Period found: split frac_digits at first_pos
                 let period = frac_digits.split_off(first_pos);
                 return (int_digits, frac_digits, period);
             }
             if frac_digits.len() >= 100 {
-                // Safety cap — treat as non-periodic (caller gets empty period)
                 return (int_digits, frac_digits, Vec::new());
             }
             seen.insert(rem, frac_digits.len());
@@ -292,17 +150,12 @@ impl Rational {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Rational expression evaluator
-// ---------------------------------------------------------------------------
-
 /// Flat token stream for the rational evaluation track.
-/// `main.rs` converts `input_buffer` into this before calling `eval_rational`.
 #[derive(Clone, Copy, Debug)]
 pub enum RatExpr {
     Num(Rational),
     Add,
-    Sub, // also used for unary minus
+    Sub,
     Mul,
     Div,
     Pow,
@@ -320,7 +173,7 @@ pub fn eval_rational(exprs: &[RatExpr]) -> Option<Rational> {
     if p.pos == exprs.len() {
         Some(result)
     } else {
-        None // unconsumed tokens → malformed expression
+        None
     }
 }
 
@@ -334,7 +187,6 @@ impl RatParser<'_> {
         self.exprs.get(self.pos).copied()
     }
 
-    // Level 1 (lowest): + and -
     fn parse_add_sub(&mut self) -> Option<Rational> {
         let mut left = self.parse_mul_div()?;
         loop {
@@ -353,7 +205,6 @@ impl RatParser<'_> {
         Some(left)
     }
 
-    // Level 2: *, /, ⊕ (same precedence, left-associative)
     fn parse_mul_div(&mut self) -> Option<Rational> {
         let mut left = self.parse_pow()?;
         loop {
@@ -376,7 +227,6 @@ impl RatParser<'_> {
         Some(left)
     }
 
-    // Level 3: unary +/- and right-associative ^
     fn parse_pow(&mut self) -> Option<Rational> {
         match self.peek() {
             Some(RatExpr::Sub) => {
@@ -393,9 +243,9 @@ impl RatParser<'_> {
         let base = self.parse_primary()?;
         if matches!(self.peek(), Some(RatExpr::Pow)) {
             self.pos += 1;
-            let exp = self.parse_pow()?; // right-associative recursion
+            let exp = self.parse_pow()?;
             if exp.den != 1 {
-                return None; // fractional exponent → irrational, collapse track
+                return None;
             }
             let e = i32::try_from(exp.num).ok()?;
             base.pow(e)
@@ -404,7 +254,6 @@ impl RatParser<'_> {
         }
     }
 
-    // Level 4 (highest): literals and parenthesised sub-expressions
     fn parse_primary(&mut self) -> Option<Rational> {
         match self.peek()? {
             RatExpr::Num(r) => {
@@ -418,7 +267,7 @@ impl RatParser<'_> {
                     self.pos += 1;
                     Some(val)
                 } else {
-                    None // unmatched paren
+                    None
                 }
             }
             _ => None,
@@ -426,26 +275,9 @@ impl RatParser<'_> {
     }
 }
 
-// ---------------------------------------------------------------------------
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_conversion() {
-        // Test: 14 dezimal sollte Dozenal 12 sein (Pfeil hoch ^ + 2 Halbkreise)
-        let dec = 14.0;
-        let doz = DozenalConverter::from_decimal(dec);
-        assert_eq!(doz, vec![DozenalDigit::D1, DozenalDigit::D2]);
-
-        // Test zurück: Dozenal [D1, D4] (14 dozenal) sollte 16 dezimal sein
-        let doz_input = vec![DozenalDigit::D1, DozenalDigit::D4];
-        let dec_result = DozenalConverter::to_decimal(&doz_input);
-        assert_eq!(dec_result, 16.0);
-    }
-
-    // --- Rational basic arithmetic ---
 
     #[test]
     fn rational_new_reduces() {
@@ -534,7 +366,6 @@ mod tests {
 
     #[test]
     fn rational_oplus() {
-        // 2 ⊕ 3 = (2*3)/(2+3) = 6/5
         let a = Rational::new(2, 1).unwrap();
         let b = Rational::new(3, 1).unwrap();
         let r = a.oplus(b).unwrap();
@@ -542,11 +373,8 @@ mod tests {
         assert_eq!(r.den, 5);
     }
 
-    // --- Period detection ---
-
     #[test]
     fn period_finite_half() {
-        // 1/2 = 0.6 in base 12 (finite)
         let r = Rational::new(1, 2).unwrap();
         let (int, pre, period) = r.to_dozenal_periodic();
         assert_eq!(int, vec![DozenalDigit::D0]);
@@ -556,7 +384,6 @@ mod tests {
 
     #[test]
     fn period_one_fifth() {
-        // 1/5 = 0.[2497] in base 12 (period 4)
         let r = Rational::new(1, 5).unwrap();
         let (_int, pre, period) = r.to_dozenal_periodic();
         assert!(pre.is_empty());
@@ -569,7 +396,6 @@ mod tests {
 
     #[test]
     fn period_one_eleventh() {
-        // 1/B (=1/11 dec) = 0.[1] in base 12 (period 1)
         let r = Rational::new(1, 11).unwrap();
         let (_int, pre, period) = r.to_dozenal_periodic();
         assert!(pre.is_empty());
@@ -579,7 +405,6 @@ mod tests {
 
     #[test]
     fn period_integer() {
-        // 7/1 — finite, no fractional part
         let r = Rational::new(7, 1).unwrap();
         let (int, pre, period) = r.to_dozenal_periodic();
         assert_eq!(int, vec![DozenalDigit::D7]);
@@ -589,7 +414,6 @@ mod tests {
 
     #[test]
     fn period_one_seventh() {
-        // 1/7 = 0.[186A35] in base 12 (period 6)
         let r = Rational::new(1, 7).unwrap();
         let (_int, pre, period) = r.to_dozenal_periodic();
         assert!(pre.is_empty());
@@ -597,27 +421,10 @@ mod tests {
         assert_eq!(period[0], DozenalDigit::D1);
         assert_eq!(period[1], DozenalDigit::D8);
         assert_eq!(period[2], DozenalDigit::D6);
-        assert_eq!(period[3], DozenalDigit::D10); // A
+        assert_eq!(period[3], DozenalDigit::D10);
         assert_eq!(period[4], DozenalDigit::D3);
         assert_eq!(period[5], DozenalDigit::D5);
     }
-
-    // --- to_decimal_exact ---
-
-    #[test]
-    fn to_decimal_exact_basic() {
-        assert_eq!(DozenalConverter::to_decimal_exact(&[]), Some(0));
-        assert_eq!(
-            DozenalConverter::to_decimal_exact(&[DozenalDigit::D1, DozenalDigit::D0]),
-            Some(12)
-        );
-        assert_eq!(
-            DozenalConverter::to_decimal_exact(&[DozenalDigit::D1, DozenalDigit::D1]),
-            Some(13)
-        );
-    }
-
-    // --- eval_rational ---
 
     fn r(n: i128, d: i128) -> RatExpr {
         RatExpr::Num(Rational::new(n, d).unwrap())
@@ -625,7 +432,6 @@ mod tests {
 
     #[test]
     fn eval_add() {
-        // 1/2 + 1/3 = 5/6
         let exprs = [r(1, 2), RatExpr::Add, r(1, 3)];
         let result = eval_rational(&exprs).unwrap();
         assert_eq!(result.num, 5);
@@ -634,7 +440,6 @@ mod tests {
 
     #[test]
     fn eval_sub() {
-        // 3/4 - 1/4 = 1/2
         let exprs = [r(3, 4), RatExpr::Sub, r(1, 4)];
         let result = eval_rational(&exprs).unwrap();
         assert_eq!(result.num, 1);
@@ -643,7 +448,6 @@ mod tests {
 
     #[test]
     fn eval_mul_div_precedence() {
-        // 1 + 2 * 3 = 7 (mul before add)
         let exprs = [r(1, 1), RatExpr::Add, r(2, 1), RatExpr::Mul, r(3, 1)];
         let result = eval_rational(&exprs).unwrap();
         assert_eq!(result, Rational::new(7, 1).unwrap());
@@ -651,7 +455,6 @@ mod tests {
 
     #[test]
     fn eval_pow() {
-        // 2^10 = 1024
         let exprs = [r(2, 1), RatExpr::Pow, r(10, 1)];
         let result = eval_rational(&exprs).unwrap();
         assert_eq!(result, Rational::new(1024, 1).unwrap());
@@ -659,7 +462,6 @@ mod tests {
 
     #[test]
     fn eval_pow_fraction_collapses() {
-        // 4^(1/2) — fractional exponent must collapse to None
         let exprs = [
             r(4, 1),
             RatExpr::Pow,
@@ -674,7 +476,6 @@ mod tests {
 
     #[test]
     fn eval_unary_minus() {
-        // -5 + 3 = -2
         let exprs = [RatExpr::Sub, r(5, 1), RatExpr::Add, r(3, 1)];
         let result = eval_rational(&exprs).unwrap();
         assert_eq!(result, Rational::new(-2, 1).unwrap());
@@ -682,7 +483,6 @@ mod tests {
 
     #[test]
     fn eval_parens() {
-        // (1 + 2) * 4 = 12
         let exprs = [
             RatExpr::LParen,
             r(1, 1),
@@ -698,7 +498,6 @@ mod tests {
 
     #[test]
     fn eval_oplus() {
-        // 2 ⊕ 3 = (2*3)/(2+3) = 6/5
         let exprs = [r(2, 1), RatExpr::OPlus, r(3, 1)];
         let result = eval_rational(&exprs).unwrap();
         assert_eq!(result.num, 6);

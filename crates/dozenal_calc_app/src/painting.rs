@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 // Copyright (c) 2026 Eric Naville
 
-use crate::logic::DozenalDigit;
-use crate::tokens::CalcToken;
+use dozenal_core::{CalcToken, DozenalDigit};
 use eframe::egui;
 use egui::{Align2, Color32, FontId, Pos2, Rect, Stroke, Vec2};
 

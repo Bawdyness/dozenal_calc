@@ -1,44 +1,49 @@
-[package]
-name = "dozenal_calc"
-version = "0.1.0"
+[workspace]
+members = ["crates/dozenal_core", "crates/dozenal_calc_app"]
+default-members = ["crates/dozenal_calc_app"]
+resolver = "2"
+
+[workspace.package]
 edition = "2024"
+authors = ["Eric Naville"]
+repository = "https://github.com/Bawdyness/dozenal_calc"
+rust-version = "1.85"
 
-[dependencies]
-eframe = "0.27.0"
-egui = "0.27.0"
-meval = "0.2"
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-wasm-bindgen = "0.2"
-wasm-bindgen-futures = "0.4"
-web-sys = "0.3"
-log = "0.4"
-
-[lints.rust]
+[workspace.lints.rust]
 unsafe_code = "forbid"
 unused = { level = "warn", priority = -1 }
 
-[lints.clippy]
+[workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }
 nursery = { level = "warn", priority = -1 }
 
-# Allow-list for an interactive-graphics project
-module_name_repetitions = "allow"   # logic::DozenalConverter etc.
-similar_names = "allow"             # int_digits / int_val collisions are fine
-cast_precision_loss = "allow"       # f64 ↔ u64 conversions are deliberate
+module_name_repetitions = "allow"
+similar_names = "allow"
+cast_precision_loss = "allow"
 cast_possible_truncation = "allow"
 cast_sign_loss = "allow"
-many_single_char_names = "allow"    # graphics code uses c, s, p, q idiomatically
-too_many_lines = "allow"            # paint_token / draw_*_layout are intrinsically long
-struct_excessive_bools = "allow"    # DozenalCalcApp aggregates several mode flags by design
-suboptimal_flops = "allow"          # mul_add micro-opt not warranted in UI math
-use_self = "allow"                  # explicit type names read better in this codebase
-missing_const_for_fn = "allow"      # nursery, frequent false positives
+many_single_char_names = "allow"
+too_many_lines = "allow"
+struct_excessive_bools = "allow"
+suboptimal_flops = "allow"
+use_self = "allow"
+missing_const_for_fn = "allow"
 derive_partial_eq_without_eq = "allow"
-redundant_pub_crate = "allow"       # pub(crate) is intentional for test-only exposure
-branches_sharing_code = "allow"     # paint_token's symmetric branches by design
-match_same_arms = "allow"           # token rendering has deliberately parallel arms
-float_cmp = "allow"                 # exact equality used in tests where it's correct
-while_float = "allow"               # period detection genuinely loops on f64
-needless_pass_by_ref_mut = "allow"  # egui Ui APIs require &mut
+redundant_pub_crate = "allow"
+branches_sharing_code = "allow"
+match_same_arms = "allow"
+float_cmp = "allow"
+while_float = "allow"
+needless_pass_by_ref_mut = "allow"
 cast_possible_wrap = "allow"
+
+# Folgende Allows greifen, weil dozenal_core jetzt eine Library-Crate ist.
+# In der Binary war derselbe Code unter pedantic+nursery sauber — pub-Sichtbarkeit
+# triggert die strikteren Lints erst, sobald die Items echte API werden.
+# Werden im Crate-Polish-Pass (siehe research/reusable_crate.md) systematisch
+# adressiert (#[must_use], thiserror, checked_*-Naming).
+must_use_candidate = "allow"
+return_self_not_must_use = "allow"
+should_implement_trait = "allow"
+too_long_first_doc_paragraph = "allow"
+doc_markdown = "allow"

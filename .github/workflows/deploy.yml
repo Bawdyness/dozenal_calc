@@ -29,7 +29,8 @@ jobs:
         uses: jetli/trunk-action@v0.5.0
 
       - name: Build WebApp with Trunk
-        run: trunk build --release --public-url /dozenal_calc/
+        working-directory: crates/dozenal_calc_app
+        run: trunk build --release --public-url /dozenal_calc/ --dist ../../dist
 
       - name: Upload artifact for Pages
         uses: actions/upload-pages-artifact@v3

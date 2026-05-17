@@ -2,9 +2,9 @@
 // Copyright (c) 2026 Eric Naville
 
 use crate::info_content::{INFO_TITLES, draw_info_chapter};
-use crate::logic::DozenalDigit;
 use crate::painting::{paint_dozenal_digit, paint_token};
-use crate::tokens::{CalcToken, DozenalCalcApp, InfoState};
+use crate::state::{DozenalCalcApp, InfoState};
+use dozenal_core::{CalcToken, DozenalDigit};
 use eframe::egui;
 use egui::{Align2, Color32, FontId, Pos2, Rect, Stroke, Vec2};
 
@@ -201,7 +201,7 @@ impl DozenalCalcApp {
         } else if self.display_dec {
             let val = self
                 .last_ans
-                .map_or(self.last_result_f64, super::logic::Rational::to_f64);
+                .map_or(self.last_result_f64, dozenal_core::Rational::to_f64);
             let s = format_decimal_result(val);
             ui.painter().text(
                 result_rect.center(),

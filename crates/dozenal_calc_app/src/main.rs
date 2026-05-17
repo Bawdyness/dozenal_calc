@@ -5,14 +5,13 @@ mod eval;
 mod info_content;
 mod input;
 mod layout;
-mod logic;
 mod painting;
-mod tokens;
+mod state;
 
 use eframe::egui;
 use egui::Color32;
 use layout::MOBILE_BREAKPOINT_PX;
-use tokens::DozenalCalcApp;
+use state::DozenalCalcApp;
 
 // 1. Die Tür für den Desktop (Native)
 #[cfg(not(target_arch = "wasm32"))]

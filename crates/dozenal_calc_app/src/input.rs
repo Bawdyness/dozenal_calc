@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 // Copyright (c) 2026 Eric Naville
 
-use crate::logic::DozenalDigit;
-use crate::tokens::{CalcToken, DozenalCalcApp, InfoState};
+use crate::state::{DozenalCalcApp, InfoState};
+use dozenal_core::{CalcToken, DozenalDigit};
 use eframe::egui;
 
 impl DozenalCalcApp {

@@ -1,0 +1,17 @@
+[package]
+name = "dozenal_core"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+license = "MIT"
+description = "Exakte Rational-Arithmetik, Periodenerkennung und Ausdrucks-Auswertung für das Dozenal-Zahlensystem (Basis 12) und beliebige andere Basen."
+keywords = ["dozenal", "duodecimal", "base12", "rational", "calculator"]
+categories = ["mathematics", "no-std"]
+readme = "README.md"
+
+[dependencies]
+
+[lints]
+workspace = true

@@ -15,19 +15,29 @@
     <link data-trunk rel="copy-file" href="sw.js" />
     <style>
         :root {
-            /* Design-Tokens aus research/design_tokens.md */
+            /* Design-Tokens aus research/design_tokens.md — 1:1 zu den
+               Konstanten in /home/eric/dozenal_calc_flutter/lib/keypad.dart. */
             --bg: #1f1f1f;
             --bg-display: rgba(0, 0, 0, 0.45);
             --bg-elev: rgba(255, 255, 255, 0.04);
             --fg: #e6e6e6;
             --fg-dim: #888;
             --fg-faint: #555;
-            --accent: #98c8ff;
-            --equals: #8cdc8c;
-            --ac: #ff4040;
-            --gold: #ffd700;
+            /* Token-Farben (Flutter _k*-Konstanten) */
+            --digit-normal: #ffffff;        /* _kDigitNormal */
+            --digit-pressed: #ffd700;       /* _kDigitPressed (egui GOLD) */
+            --digit-disabled: #606060;      /* _kDigitDisabled */
+            --op-normal: #98c8ff;           /* _kOpNormal */
+            --op-pressed: #ff9090;          /* _kOpPressed */
+            --equals: #8cdc8c;              /* _kEquals */
+            --ac: #ff4040;                  /* _kAc */
+            --ac-pressed: #ff8080;          /* _kAcPressed */
+            --border: #505050;              /* _kBorder */
+            --border-disabled: #303030;     /* in Flutter inline definiert */
+            /* Spezialfarben */
+            --accent: var(--op-normal);     /* Legacy-Alias */
+            --gold: var(--digit-pressed);   /* Legacy-Alias */
             --err: #ff6464;
-            --border: #505050;
             --separator: #333;
         }
         * { box-sizing: border-box; }
@@ -91,66 +101,83 @@
             font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
         }
 
-        /* --- Display --- */
+        /* --- Display ---
+           Flutter-typografische Hierarchie: Indikatoren klein und dim,
+           Eingabe-Zeile mittelgross dim, Resultat-Zeile gross und vollfarbig. */
         .display {
             position: relative;
             background: var(--bg-display);
+            border: 1px solid #2a2a2a;
             border-radius: 8px;
-            padding: 12px 14px 16px;
-            min-height: 120px;
+            padding: 14px 16px 16px;
+            min-height: 128px;
             display: flex;
             flex-direction: column;
         }
         .display-indicators {
             position: absolute;
-            top: 8px;
+            top: 6px;
             left: 12px;
             right: 12px;
             display: flex;
             justify-content: space-between;
             font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-            font-size: 11px;
+            font-size: 10px;
+            letter-spacing: 0.06em;
             color: var(--fg-dim);
             pointer-events: none;
+            text-transform: uppercase;
         }
-        .indicator-memory { color: var(--gold); font-weight: 600; }
-        .indicator-mode-right { display: flex; gap: 8px; }
-        .indicator-numeral { color: var(--accent); }
+        .indicator-memory {
+            color: var(--digit-pressed);
+            font-weight: 600;
+            min-width: 1em;
+        }
+        .indicator-mode-right { display: flex; gap: 10px; }
+        .indicator-numeral { color: var(--op-normal); }
 
         .display-line {
             display: flex;
             align-items: center;
             min-height: 44px;
-            margin-top: 16px;
+            margin-top: 18px;
             overflow: hidden;
         }
         .display-input { justify-content: flex-start; color: var(--fg-dim); }
-        .display-result { justify-content: flex-end; color: var(--fg); }
+        .display-result { justify-content: flex-end; color: var(--digit-normal); }
         .display-separator {
-            border-top: 1px solid var(--separator);
-            margin: 4px 8px;
+            border-top: 0.5px solid var(--separator);
+            margin: 6px 10px 4px;
         }
 
         /* --- Token-Reihen im Display --- */
         .token-row {
             display: inline-flex;
             align-items: center;
-            gap: 0;
+            gap: 0.05em;
         }
         .token-row-input { font-size: 14px; }
-        .token-row-result { font-size: 22px; }
+        .token-row-input .glyph { width: 1.1em; height: 1.1em; }
+        .token-row-result { font-size: 26px; font-weight: 500; }
+        .token-row-result .glyph { width: 1.3em; height: 1.3em; }
 
-        /* --- Glyphen --- */
+        /* --- Glyphen ---
+           Strichstärke in absoluten Pixeln (vector-effect), nicht
+           viewBox-relativ — Flutter `paintDozenalDigitAt` zeichnet ebenfalls
+           absolut 2.5 dp, unabhängig von der Button-Grösse. So bleibt die
+           Linienstärke konsistent vom Display (gross) bis zur Taste (mittel)
+           bis zum potenziellen Mini-Indikator (klein). */
         .glyph {
             width: 1.2em;
             height: 1.2em;
             stroke: currentColor;
             fill: none;
-            stroke-width: 6;
+            stroke-width: 2.5;
             stroke-linecap: round;
             stroke-linejoin: round;
             vertical-align: middle;
         }
+        .glyph, .glyph * { vector-effect: non-scaling-stroke; }
         .token-row-result .glyph { width: 1.4em; height: 1.4em; }
 
         /* --- Punktuation/Operatoren als Text --- */
@@ -224,82 +251,129 @@
             margin: 2px 0;
         }
 
-        /* --- Token-Button (alle Tasten) --- */
+        /* --- Token-Button (alle Tasten) ---
+           Flutter `_PressableShell`-Spec: transparenter Hintergrund, 1 px
+           Border in --border, 4 px Radius. Kein Fill — die Form lebt nur
+           vom Border und der inneren Glyphe/Schrift. Press-Feedback ändert
+           nur die Glyph-/Text-Farbe (Flutter nutzt `NoSplash.splashFactory`,
+           also kein Hintergrund-Ripple). */
         .token-btn {
             min-height: 44px;
-            padding: 8px 4px;
-            background: var(--bg-elev);
+            padding: 6px 4px;
+            background: transparent;
             border: 1px solid var(--border);
-            border-radius: 6px;
-            color: var(--fg);
+            border-radius: 4px;
+            color: var(--digit-normal);
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            font-size: 15px;
+            font-size: 14px;
+            font-weight: 500;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: background 80ms, border-color 80ms;
+            transition: color 80ms, border-color 80ms;
             position: relative;
             -webkit-user-select: none;
             user-select: none;
+            line-height: 1;
         }
+        /* Subtiler Desktop-Hover (auf Touch-Devices irrelevant). */
+        @media (hover: hover) {
+            .token-btn:hover { border-color: #6a6a6a; }
+        }
+        /* :active = nur Glyph-Farbe wechseln, nicht der Hintergrund. */
         .token-btn:active {
-            background: rgba(255, 255, 255, 0.10);
+            transition: none;
+        }
+        .token-btn[disabled],
+        .token-btn[aria-disabled="true"] {
+            border-color: var(--border-disabled);
+            color: var(--digit-disabled);
+            cursor: not-allowed;
         }
 
-        /* --- Varianten --- */
-        .token-btn-digit {
-            color: var(--fg);
-        }
-        .token-btn-digit:active {
-            color: var(--gold);
-        }
+        /* --- Varianten — Glyph-/Text-Farben je Kontext --- */
+        .token-btn-digit { color: var(--digit-normal); }
+        .token-btn-digit:active { color: var(--digit-pressed); }
         .token-btn-digit .glyph {
-            width: 1.8em;
-            height: 1.8em;
-            stroke-width: 5;
+            width: 1.9em;
+            height: 1.9em;
         }
-        .token-btn-op {
-            color: var(--accent);
-        }
-        .token-btn-op:active {
-            color: #ff9090; /* LIGHT_RED-Pendant */
-        }
+
+        .token-btn-op { color: var(--op-normal); }
+        .token-btn-op:active { color: var(--op-pressed); }
+
         .token-btn-nav {
-            color: var(--accent);
+            color: var(--op-normal);
             font-size: 14px;
         }
+        .token-btn-nav:active { color: var(--op-pressed); }
+
         .token-btn-sys {
-            color: var(--fg);
+            color: var(--digit-normal);
             font-size: 13px;
         }
+        .token-btn-sys:active { color: var(--op-pressed); }
+
+        .token-btn-mem {
+            color: var(--digit-pressed);    /* Gold-Akzent für Memory */
+            font-size: 13px;
+            font-weight: 500;
+        }
+        .token-btn-mem:active { color: var(--op-pressed); }
+
+        .token-btn-const {
+            color: var(--op-normal);
+            font-size: 16px;
+        }
+        .token-btn-const:active { color: var(--op-pressed); }
+
+        .token-btn-fn {
+            color: var(--op-normal);
+            font-size: 13px;
+        }
+        .token-btn-fn:active { color: var(--op-pressed); }
+
+        .token-btn-mode {
+            color: var(--fg-dim);
+            font-size: 12px;
+            font-weight: 500;
+            letter-spacing: 0.02em;
+        }
+        .token-btn-mode:active { color: var(--op-pressed); }
+
         .token-btn-ac {
             color: var(--ac);
             font-weight: 600;
         }
-        .token-btn-ac:active {
-            background: rgba(255, 64, 64, 0.15);
-        }
+        .token-btn-ac:active { color: var(--ac-pressed); }
+
         .token-btn-equals {
             color: var(--equals);
             font-weight: 600;
             font-size: 20px;
             min-height: 52px;
         }
-        .token-btn-equals:active {
-            background: rgba(140, 220, 140, 0.18);
-        }
+        .token-btn-equals:active { color: var(--op-pressed); }
 
-        /* --- Armed-Marker --- */
+        /* --- Armed-Marker (Flutter `_ArmedDot`, top: 4, right: 4) --- */
         .token-btn.armed::after {
             content: "";
             position: absolute;
             top: 4px;
-            right: 6px;
+            right: 4px;
             width: 6px;
             height: 6px;
             border-radius: 50%;
-            background: var(--gold);
+            background: var(--digit-pressed);
+        }
+
+        /* --- Selected-Marker (Mode-Tasten DRG/DOZ/DEZ wenn aktiv) ---
+           Flutter: 2px-Border in _kOpNormal, wenn `selected`. */
+        .token-btn.selected {
+            border-color: var(--op-normal);
+            border-width: 2px;
+            padding: 5px 3px;    /* 1px weniger Padding, damit kein Layout-Shift */
         }
 
         /* --- Composite-Tokens (x^y, log_n) --- */
@@ -316,27 +390,6 @@
             font-size: 0.7em;
             vertical-align: sub;
             margin-left: 0.1em;
-        }
-
-        /* --- Overlay-Varianten --- */
-        .token-btn-mem {
-            color: var(--gold);
-            font-size: 13px;
-            font-weight: 500;
-        }
-        .token-btn-const {
-            color: #c0d8ff;
-            font-size: 16px;
-        }
-        .token-btn-fn {
-            color: var(--accent);
-            font-size: 13px;
-        }
-        .token-btn-mode {
-            color: var(--fg-dim);
-            font-size: 12px;
-            font-weight: 500;
-            letter-spacing: 0.02em;
         }
 
         /* --- Panel-Swap (Main ↔ Overlay) --- */

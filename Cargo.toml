@@ -3,6 +3,16 @@ members = ["crates/dozenal_core", "crates/dozenal_calc_app", "crates/dozenal_cal
 default-members = ["crates/dozenal_calc_app"]
 resolver = "2"
 
+# WASM-Diät: aggressive Größen-Optimierung für alle Release-Builds.
+# Wirkt auf egui-Build (dist/) und Leptos-Build (dist/preview/) gleichermassen.
+# Tests laufen weiterhin im Default-Profil mit Unwind-Panic.
+[profile.release]
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "debuginfo"
+
 [workspace.package]
 edition = "2024"
 authors = ["Eric Naville"]

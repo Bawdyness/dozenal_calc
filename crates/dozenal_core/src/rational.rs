@@ -140,7 +140,12 @@ impl Rational {
                 return (int_digits, frac_digits, Vec::new());
             }
             seen.insert(rem, frac_digits.len());
-            rem *= 12;
+            // Bei Nennern > i128::MAX / 12 (≈ 1.4 · 10^37) würde rem * 12 wrappen.
+            // Bis zur BigInt-Migration: abbrechen und non-periodisch zurückgeben.
+            let Some(scaled) = rem.checked_mul(12) else {
+                return (int_digits, frac_digits, Vec::new());
+            };
+            rem = scaled;
             let digit_val = (rem / den) as u32;
             rem %= den;
             if let Some(d) = DozenalDigit::from_value(digit_val) {
@@ -410,6 +415,16 @@ mod tests {
         assert_eq!(int, vec![DozenalDigit::D7]);
         assert!(pre.is_empty());
         assert!(period.is_empty());
+    }
+
+    #[test]
+    fn period_huge_denominator_does_not_overflow() {
+        // den = i128::MAX provoziert irgendwann `rem * 12 > i128::MAX`.
+        // Vor dem Fix: Panik in debug, silent wrap in release.
+        // Nach dem Fix: kontrollierter Abbruch mit leerer Periode.
+        let r = Rational::new(1, i128::MAX).unwrap();
+        let (_int, _pre, _period) = r.to_dozenal_periodic();
+        // Erfolg = kein Panik.
     }
 
     #[test]

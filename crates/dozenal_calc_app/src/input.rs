@@ -5,6 +5,36 @@ use crate::state::{DozenalCalcApp, InfoState};
 use dozenal_core::{CalcToken, DozenalDigit};
 use eframe::egui;
 
+/// Gibt den Inversen-Partner für eine Funktions-Token-Doppelklick-Toggle-Paarung
+/// zurück, oder `None` wenn keine Inverse definiert ist. Gemeinsame Quelle für den
+/// eigentlichen Toggle (`handle_click`) und den Armed-Marker (`is_armed`) — beide
+/// laufen durch diese Funktion, damit Anzeige und Verhalten konsistent bleiben.
+fn inverse_swap(token: CalcToken, prev: CalcToken) -> Option<CalcToken> {
+    use CalcToken::{
+        ArCosh, ArSinh, ArTanh, ArcCos, ArcCot, ArcSin, ArcTan, Cos, Cosh, Cot, Coth, Sin, Sinh,
+        Tan, Tanh,
+    };
+    Some(match (token, prev) {
+        (Sin, Sin) => ArcSin,
+        (Sin, ArcSin) => Sin,
+        (Cos, Cos) => ArcCos,
+        (Cos, ArcCos) => Cos,
+        (Tan, Tan) => ArcTan,
+        (Tan, ArcTan) => Tan,
+        (Cot, Cot) => ArcCot,
+        (Cot, ArcCot) => Cot,
+        (Sinh, Sinh) => ArSinh,
+        (Sinh, ArSinh) => Sinh,
+        (Cosh, Cosh) => ArCosh,
+        (Cosh, ArCosh) => Cosh,
+        (Tanh, Tanh) => ArTanh,
+        (Tanh, ArTanh) => Tanh,
+        (Coth, Coth) => CalcToken::ArCoth,
+        (Coth, CalcToken::ArCoth) => Coth,
+        _ => return None,
+    })
+}
+
 impl DozenalCalcApp {
     // --- KLICK-LOGIK ---
     pub fn handle_click(&mut self, token: CalcToken) {
@@ -215,26 +245,7 @@ impl DozenalCalcApp {
                 if self.cursor_pos > 0 {
                     let prev_idx = self.cursor_pos - 1;
                     let prev_token = self.input_buffer[prev_idx];
-                    let swap = match (token, prev_token) {
-                        (CalcToken::Sin, CalcToken::Sin) => Some(CalcToken::ArcSin),
-                        (CalcToken::Sin, CalcToken::ArcSin) => Some(CalcToken::Sin),
-                        (CalcToken::Cos, CalcToken::Cos) => Some(CalcToken::ArcCos),
-                        (CalcToken::Cos, CalcToken::ArcCos) => Some(CalcToken::Cos),
-                        (CalcToken::Tan, CalcToken::Tan) => Some(CalcToken::ArcTan),
-                        (CalcToken::Tan, CalcToken::ArcTan) => Some(CalcToken::Tan),
-                        (CalcToken::Cot, CalcToken::Cot) => Some(CalcToken::ArcCot),
-                        (CalcToken::Cot, CalcToken::ArcCot) => Some(CalcToken::Cot),
-                        (CalcToken::Sinh, CalcToken::Sinh) => Some(CalcToken::ArSinh),
-                        (CalcToken::Sinh, CalcToken::ArSinh) => Some(CalcToken::Sinh),
-                        (CalcToken::Cosh, CalcToken::Cosh) => Some(CalcToken::ArCosh),
-                        (CalcToken::Cosh, CalcToken::ArCosh) => Some(CalcToken::Cosh),
-                        (CalcToken::Tanh, CalcToken::Tanh) => Some(CalcToken::ArTanh),
-                        (CalcToken::Tanh, CalcToken::ArTanh) => Some(CalcToken::Tanh),
-                        (CalcToken::Coth, CalcToken::Coth) => Some(CalcToken::ArCoth),
-                        (CalcToken::Coth, CalcToken::ArCoth) => Some(CalcToken::Coth),
-                        _ => None,
-                    };
-                    if let Some(new_token) = swap {
+                    if let Some(new_token) = inverse_swap(token, prev_token) {
                         self.input_buffer[prev_idx] = new_token;
                         toggled = true;
                     }
@@ -264,32 +275,15 @@ impl DozenalCalcApp {
         }
     }
 
-    /// Returns true when the token just before `cursor_pos` is the same function —
-    /// meaning a second click would toggle to its inverse. Used for the armed marker.
+    /// True wenn ein Klick auf `token` den vorangehenden Buffer-Token via
+    /// `inverse_swap` zur Inversen umtoggeln würde. Delegiert auf dieselbe
+    /// Quelle wie der Toggle in `handle_click`, sodass Anzeige (Armed-Dot)
+    /// und Verhalten nicht auseinanderlaufen können.
     pub fn is_armed(&self, token: CalcToken) -> bool {
-        let invertible = matches!(
-            token,
-            CalcToken::Sin
-                | CalcToken::Cos
-                | CalcToken::Tan
-                | CalcToken::Cot
-                | CalcToken::ArcSin
-                | CalcToken::ArcCos
-                | CalcToken::ArcTan
-                | CalcToken::ArcCot
-                | CalcToken::Sinh
-                | CalcToken::Cosh
-                | CalcToken::Tanh
-                | CalcToken::Coth
-                | CalcToken::ArSinh
-                | CalcToken::ArCosh
-                | CalcToken::ArTanh
-                | CalcToken::ArCoth
-        );
-        if !invertible || self.cursor_pos == 0 {
+        if self.cursor_pos == 0 {
             return false;
         }
-        self.input_buffer[self.cursor_pos - 1] == token
+        inverse_swap(token, self.input_buffer[self.cursor_pos - 1]).is_some()
     }
 
     /// True wenn das Zahl-Literal unter dem Cursor schon einen Dezimalpunkt enthält.
@@ -420,6 +414,26 @@ mod tests {
             .filter(|t| matches!(t, CalcToken::Decimal))
             .count();
         assert_eq!(decimals, 2);
+    }
+
+    #[test]
+    fn is_armed_consistent_with_toggle_in_both_directions() {
+        // is_armed muss in beide Richtungen `true` liefern: vor dem ersten
+        // Toggle (Sin→ArcSin) UND nach dem Toggle (Sin würde wieder zu Sin).
+        // Vorher: is_armed prüfte nur `prev == token`, also nicht symmetrisch.
+        let mut app = DozenalCalcApp::default();
+        app.handle_click(CalcToken::Sin);
+        // Buffer: [Sin]. Nächster Sin-Klick → ArcSin.
+        assert!(app.is_armed(CalcToken::Sin));
+
+        app.handle_click(CalcToken::Sin);
+        // Buffer: [ArcSin]. Nächster Sin-Klick → wieder Sin.
+        assert_eq!(app.input_buffer, vec![CalcToken::ArcSin]);
+        assert!(app.is_armed(CalcToken::Sin));
+
+        app.handle_click(CalcToken::Sin);
+        // Buffer: [Sin].
+        assert_eq!(app.input_buffer, vec![CalcToken::Sin]);
     }
 
     #[test]

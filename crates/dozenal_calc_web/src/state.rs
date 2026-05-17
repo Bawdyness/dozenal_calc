@@ -335,8 +335,20 @@ impl CalcState {
                 self.angle_mode.update(|am| *am = am.next());
                 self.overlay_open.set(false);
             }
-            CalcToken::Info | CalcToken::DozDec => {
-                // Info/Doz↔Dez wirken in Phase E/D — hier nur Overlay schliessen.
+            CalcToken::DozDec => {
+                // Toggle des Zahlsystem-Indikators. Die tatsächliche
+                // Basis-Konversion des Buffers folgt als Folge-Task —
+                // hier wird nur das Anzeige-Label geschwenkt.
+                self.numeral_system.update(|n| {
+                    *n = match n {
+                        NumeralSystem::Doz => NumeralSystem::Dez,
+                        NumeralSystem::Dez => NumeralSystem::Doz,
+                    };
+                });
+                self.overlay_open.set(false);
+            }
+            CalcToken::Info => {
+                // Info-Surface kommt in Phase E (Hash-Routing).
                 self.overlay_open.set(false);
             }
             // Trig + Hyperbolic: Doppelklick toggelt zur Inversen.

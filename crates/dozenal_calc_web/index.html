@@ -311,6 +311,48 @@
             vertical-align: sub;
             margin-left: 0.1em;
         }
+
+        /* --- Overlay-Varianten --- */
+        .token-btn-mem {
+            color: var(--gold);
+            font-size: 13px;
+            font-weight: 500;
+        }
+        .token-btn-const {
+            color: #c0d8ff;
+            font-size: 16px;
+        }
+        .token-btn-fn {
+            color: var(--accent);
+            font-size: 13px;
+        }
+        .token-btn-mode {
+            color: var(--fg-dim);
+            font-size: 12px;
+            font-weight: 500;
+            letter-spacing: 0.02em;
+        }
+
+        /* --- Panel-Swap (Main ↔ Overlay) --- */
+        .panel {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            animation: panel-fade 160ms ease-out;
+        }
+        @keyframes panel-fade {
+            from { opacity: 0; transform: translateY(4px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .panel-overlay .keypad-ops {
+            /* Sets 6-9 leicht abgesetzt durch dunkleren Hintergrund */
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 6px;
+            padding: 6px;
+        }
+        .panel-overlay .keypad-system {
+            margin-top: -4px;
+        }
     </style>
 </head>
 <body>

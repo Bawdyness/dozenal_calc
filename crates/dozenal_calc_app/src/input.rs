@@ -9,10 +9,10 @@ use eframe::egui;
 /// zurück, oder `None` wenn keine Inverse definiert ist. Gemeinsame Quelle für den
 /// eigentlichen Toggle (`handle_click`) und den Armed-Marker (`is_armed`) — beide
 /// laufen durch diese Funktion, damit Anzeige und Verhalten konsistent bleiben.
-fn inverse_swap(token: CalcToken, prev: CalcToken) -> Option<CalcToken> {
+fn inverse_swap(token: &CalcToken, prev: &CalcToken) -> Option<CalcToken> {
     use CalcToken::{
-        ArCosh, ArSinh, ArTanh, ArcCos, ArcCot, ArcSin, ArcTan, Cos, Cosh, Cot, Coth, Sin, Sinh,
-        Tan, Tanh,
+        ArCosh, ArCoth, ArSinh, ArTanh, ArcCos, ArcCot, ArcSin, ArcTan, Cos, Cosh, Cot, Coth, Sin,
+        Sinh, Tan, Tanh,
     };
     Some(match (token, prev) {
         (Sin, Sin) => ArcSin,
@@ -29,8 +29,8 @@ fn inverse_swap(token: CalcToken, prev: CalcToken) -> Option<CalcToken> {
         (Cosh, ArCosh) => Cosh,
         (Tanh, Tanh) => ArTanh,
         (Tanh, ArTanh) => Tanh,
-        (Coth, Coth) => CalcToken::ArCoth,
-        (Coth, CalcToken::ArCoth) => Coth,
+        (Coth, Coth) => ArCoth,
+        (Coth, ArCoth) => Coth,
         _ => return None,
     })
 }
@@ -95,10 +95,10 @@ impl DozenalCalcApp {
             self.cursor_pos = 0;
             if is_operator {
                 // Ans auto-insertion for operator-first new expressions
-                if let Some(r) = self.last_ans {
+                if let Some(r) = self.last_ans.clone() {
                     self.input_buffer.push(CalcToken::RatLit(r));
                 } else {
-                    for &t in &self.result_buffer.clone() {
+                    for t in self.result_buffer.clone() {
                         self.input_buffer.push(t);
                     }
                 }
@@ -169,19 +169,19 @@ impl DozenalCalcApp {
             // Set 6 — Memory
             CalcToken::Sto => {
                 self.memory = self.result_buffer.clone();
-                self.memory_rational = self.last_ans;
+                self.memory_rational = self.last_ans.clone();
                 self.overlay_open = false;
             }
             CalcToken::Rcl => {
                 if !self.memory.is_empty() {
-                    if let Some(r) = self.memory_rational {
+                    if let Some(r) = self.memory_rational.clone() {
                         // Exact rational — insert a single RatLit token
                         self.input_buffer
                             .insert(self.cursor_pos, CalcToken::RatLit(r));
                         self.cursor_pos += 1;
                     } else {
                         // f64 fallback — insert digit tokens from memory buffer
-                        for &m in &self.memory.clone() {
+                        for m in self.memory.clone() {
                             self.input_buffer.insert(self.cursor_pos, m);
                             self.cursor_pos += 1;
                         }
@@ -195,14 +195,14 @@ impl DozenalCalcApp {
                 self.overlay_open = false;
             }
             CalcToken::Ans => {
-                if let Some(r) = self.last_ans {
+                if let Some(r) = self.last_ans.clone() {
                     // Exact rational — insert a single RatLit token
                     self.input_buffer
                         .insert(self.cursor_pos, CalcToken::RatLit(r));
                     self.cursor_pos += 1;
                 } else {
                     // f64 fallback — insert digit tokens from result buffer
-                    for &m in &self.result_buffer.clone() {
+                    for m in self.result_buffer.clone() {
                         self.input_buffer.insert(self.cursor_pos, m);
                         self.cursor_pos += 1;
                     }
@@ -244,19 +244,19 @@ impl DozenalCalcApp {
                 let mut toggled = false;
                 if self.cursor_pos > 0 {
                     let prev_idx = self.cursor_pos - 1;
-                    let prev_token = self.input_buffer[prev_idx];
-                    if let Some(new_token) = inverse_swap(token, prev_token) {
+                    if let Some(new_token) = inverse_swap(&token, &self.input_buffer[prev_idx]) {
                         self.input_buffer[prev_idx] = new_token;
                         toggled = true;
                     }
                 }
+                let token_for_overlay_check = token.clone();
                 if !toggled {
                     self.input_buffer.insert(self.cursor_pos, token);
                     self.cursor_pos += 1;
                 }
                 // Overlay tokens close the overlay after insertion
                 if matches!(
-                    token,
+                    token_for_overlay_check,
                     CalcToken::Sinh
                         | CalcToken::Cosh
                         | CalcToken::Tanh
@@ -279,11 +279,11 @@ impl DozenalCalcApp {
     /// `inverse_swap` zur Inversen umtoggeln würde. Delegiert auf dieselbe
     /// Quelle wie der Toggle in `handle_click`, sodass Anzeige (Armed-Dot)
     /// und Verhalten nicht auseinanderlaufen können.
-    pub fn is_armed(&self, token: CalcToken) -> bool {
+    pub fn is_armed(&self, token: &CalcToken) -> bool {
         if self.cursor_pos == 0 {
             return false;
         }
-        inverse_swap(token, self.input_buffer[self.cursor_pos - 1]).is_some()
+        inverse_swap(token, &self.input_buffer[self.cursor_pos - 1]).is_some()
     }
 
     /// True wenn das Zahl-Literal unter dem Cursor schon einen Dezimalpunkt enthält.
@@ -293,7 +293,7 @@ impl DozenalCalcApp {
         let mut i = self.cursor_pos;
         while i > 0 {
             i -= 1;
-            let t = self.input_buffer[i];
+            let t = &self.input_buffer[i];
             if matches!(t, CalcToken::Decimal) {
                 return true;
             }
@@ -303,7 +303,7 @@ impl DozenalCalcApp {
         }
         let mut i = self.cursor_pos;
         while i < self.input_buffer.len() {
-            let t = self.input_buffer[i];
+            let t = &self.input_buffer[i];
             if matches!(t, CalcToken::Decimal) {
                 return true;
             }
@@ -424,12 +424,12 @@ mod tests {
         let mut app = DozenalCalcApp::default();
         app.handle_click(CalcToken::Sin);
         // Buffer: [Sin]. Nächster Sin-Klick → ArcSin.
-        assert!(app.is_armed(CalcToken::Sin));
+        assert!(app.is_armed(&CalcToken::Sin));
 
         app.handle_click(CalcToken::Sin);
         // Buffer: [ArcSin]. Nächster Sin-Klick → wieder Sin.
         assert_eq!(app.input_buffer, vec![CalcToken::ArcSin]);
-        assert!(app.is_armed(CalcToken::Sin));
+        assert!(app.is_armed(&CalcToken::Sin));
 
         app.handle_click(CalcToken::Sin);
         // Buffer: [Sin].

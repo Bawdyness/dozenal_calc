@@ -18,10 +18,12 @@ pub const F64_FRAC_DIGITS: usize = 4;
 /// rational evaluation track. Returns `None` as soon as a non-rational token
 /// (transcendental function, irrational constant, etc.) is encountered.
 pub fn build_rat_expr(tokens: &[CalcToken]) -> Option<Vec<RatExpr>> {
+    use num_bigint::BigInt;
+
     let mut exprs = Vec::new();
     let mut i = 0;
     while i < tokens.len() {
-        match tokens[i] {
+        match &tokens[i] {
             CalcToken::Digit(_) => {
                 let mut int_d: Vec<DozenalDigit> = Vec::new();
                 let mut frac_d: Vec<DozenalDigit> = Vec::new();
@@ -30,12 +32,12 @@ pub fn build_rat_expr(tokens: &[CalcToken]) -> Option<Vec<RatExpr>> {
                     if i >= tokens.len() {
                         break;
                     }
-                    match tokens[i] {
+                    match &tokens[i] {
                         CalcToken::Digit(d) => {
                             if in_frac {
-                                frac_d.push(d);
+                                frac_d.push(*d);
                             } else {
-                                int_d.push(d);
+                                int_d.push(*d);
                             }
                             i += 1;
                         }
@@ -47,13 +49,13 @@ pub fn build_rat_expr(tokens: &[CalcToken]) -> Option<Vec<RatExpr>> {
                     }
                 }
                 let int_val = DozenalConverter::to_decimal_exact(&int_d)?;
-                let int_rat = Rational::new(int_val, 1)?;
+                let int_rat = Rational::from_ints(int_val, 1)?;
                 let rat = if frac_d.is_empty() {
                     int_rat
                 } else {
                     let frac_num = DozenalConverter::to_decimal_exact(&frac_d)?;
-                    let frac_den = 12_i128.checked_pow(frac_d.len() as u32)?;
-                    int_rat.add(Rational::new(frac_num, frac_den)?)?
+                    let frac_den = BigInt::from(12).pow(frac_d.len() as u32);
+                    int_rat.add(&Rational::new(BigInt::from(frac_num), frac_den)?)
                 };
                 exprs.push(RatExpr::Num(rat));
             }
@@ -61,8 +63,8 @@ pub fn build_rat_expr(tokens: &[CalcToken]) -> Option<Vec<RatExpr>> {
                 i += 1;
                 let mut frac_d: Vec<DozenalDigit> = Vec::new();
                 while i < tokens.len() {
-                    if let CalcToken::Digit(d) = tokens[i] {
-                        frac_d.push(d);
+                    if let CalcToken::Digit(d) = &tokens[i] {
+                        frac_d.push(*d);
                         i += 1;
                     } else {
                         break;
@@ -72,8 +74,11 @@ pub fn build_rat_expr(tokens: &[CalcToken]) -> Option<Vec<RatExpr>> {
                     return None;
                 }
                 let frac_num = DozenalConverter::to_decimal_exact(&frac_d)?;
-                let frac_den = 12_i128.checked_pow(frac_d.len() as u32)?;
-                exprs.push(RatExpr::Num(Rational::new(frac_num, frac_den)?));
+                let frac_den = BigInt::from(12).pow(frac_d.len() as u32);
+                exprs.push(RatExpr::Num(Rational::new(
+                    BigInt::from(frac_num),
+                    frac_den,
+                )?));
             }
             CalcToken::Add => {
                 exprs.push(RatExpr::Add);
@@ -108,7 +113,7 @@ pub fn build_rat_expr(tokens: &[CalcToken]) -> Option<Vec<RatExpr>> {
                 i += 1;
             }
             CalcToken::RatLit(r) => {
-                exprs.push(RatExpr::Num(r));
+                exprs.push(RatExpr::Num(r.clone()));
                 i += 1;
             }
             _ => return None,
@@ -267,7 +272,7 @@ fn needs_implicit_mul(tokens: &[CalcToken], i: usize) -> bool {
     )
 }
 
-fn is_function_token(t: CalcToken) -> bool {
+fn is_function_token(t: &CalcToken) -> bool {
     matches!(
         t,
         CalcToken::Sin
@@ -301,19 +306,19 @@ fn left_operand_token_range(tokens: &[CalcToken], op_pos: usize) -> Option<(usiz
     if op_pos == 0 {
         return None;
     }
-    let prev = tokens[op_pos - 1];
+    let prev = &tokens[op_pos - 1];
 
     if matches!(prev, CalcToken::ParenClose) {
         let mut depth: i32 = 0;
         let mut j = op_pos - 1;
         loop {
-            let t = tokens[j];
+            let t = &tokens[j];
             if matches!(t, CalcToken::ParenClose) {
                 depth += 1;
             } else if matches!(t, CalcToken::ParenOpen) {
                 depth -= 1;
                 if depth == 0 {
-                    if j > 0 && is_function_token(tokens[j - 1]) {
+                    if j > 0 && is_function_token(&tokens[j - 1]) {
                         return Some((j - 1, op_pos));
                     }
                     return Some((j, op_pos));
@@ -330,7 +335,7 @@ fn left_operand_token_range(tokens: &[CalcToken], op_pos: usize) -> Option<(usiz
     if matches!(prev, CalcToken::Digit(_) | CalcToken::Decimal) {
         let mut j = op_pos - 1;
         while j > 0 {
-            let t = tokens[j - 1];
+            let t = &tokens[j - 1];
             if matches!(t, CalcToken::Digit(_) | CalcToken::Decimal) {
                 j -= 1;
             } else {
@@ -372,9 +377,8 @@ pub fn resolve_postfix(tokens: &[CalcToken]) -> Vec<CalcToken> {
     loop {
         let mut changed = false;
         for i in 0..current.len() {
-            let t = current[i];
             if !matches!(
-                t,
+                &current[i],
                 CalcToken::Factorial | CalcToken::AbsVal | CalcToken::Reciprocal
             ) {
                 continue;
@@ -382,6 +386,7 @@ pub fn resolve_postfix(tokens: &[CalcToken]) -> Vec<CalcToken> {
             let Some((start, end)) = left_operand_token_range(&current, i) else {
                 continue;
             };
+            let t = current[i].clone();
             let operand: Vec<CalcToken> = current[start..end].to_vec();
             let mut new_current = Vec::with_capacity(current.len() + 2);
             new_current.extend_from_slice(&current[..start]);
@@ -405,8 +410,8 @@ pub fn resolve_postfix(tokens: &[CalcToken]) -> Vec<CalcToken> {
 /// notation implies multiplication (e.g. `π π`, `2(`, `)(`, `2 sin`).
 pub fn with_implicit_muls(tokens: &[CalcToken]) -> Vec<CalcToken> {
     let mut result = Vec::with_capacity(tokens.len() + 4);
-    for (i, &token) in tokens.iter().enumerate() {
-        result.push(token);
+    for (i, token) in tokens.iter().enumerate() {
+        result.push(token.clone());
         if needs_implicit_mul(tokens, i) {
             result.push(CalcToken::Mul);
         }
@@ -440,7 +445,7 @@ fn flush_number_literal(
     *in_fraction = false;
 }
 
-fn token_meval_str(token: CalcToken) -> &'static str {
+fn token_meval_str(token: &CalcToken) -> &'static str {
     match token {
         CalcToken::Add => "+",
         CalcToken::Sub | CalcToken::Negate => "-",
@@ -476,7 +481,7 @@ fn token_meval_str(token: CalcToken) -> &'static str {
     }
 }
 
-fn const_value(token: CalcToken) -> Option<f64> {
+fn const_value(token: &CalcToken) -> Option<f64> {
     match token {
         CalcToken::ConstPi => Some(std::f64::consts::PI),
         CalcToken::ConstE => Some(std::f64::consts::E),
@@ -494,13 +499,13 @@ pub fn build_meval_string(expanded: &[CalcToken]) -> String {
     let mut in_fraction = false;
     let mut tokens_str: Vec<String> = Vec::new();
 
-    for &token in expanded {
+    for token in expanded {
         match token {
             CalcToken::Digit(d) => {
                 if in_fraction {
-                    frac_digits.push(d);
+                    frac_digits.push(*d);
                 } else {
-                    int_digits.push(d);
+                    int_digits.push(*d);
                 }
             }
             CalcToken::Decimal => in_fraction = true,
@@ -550,10 +555,11 @@ pub struct PeriodMeta {
 }
 
 /// Renders an exact `Rational` as a token sequence with optional period metadata.
-pub fn format_rational_result(r: Rational) -> (Vec<CalcToken>, PeriodMeta) {
+pub fn format_rational_result(r: &Rational) -> (Vec<CalcToken>, PeriodMeta) {
+    use num_traits::Signed;
     let (int_d, pre_d, period_d) = r.to_dozenal_periodic();
     let mut buf: Vec<CalcToken> = Vec::new();
-    if r.num < 0 {
+    if r.num.is_negative() {
         buf.push(CalcToken::Negate);
     }
     buf.extend(int_d.into_iter().map(CalcToken::Digit));
@@ -666,7 +672,7 @@ mod tests {
         let result = eval_rational(&exprs).expect("rat eval should succeed");
         assert_eq!(
             result,
-            Rational::new(5, 2).unwrap(),
+            Rational::from_ints(5, 2).unwrap(),
             "5⊕(3+2) must equal 5/2"
         );
     }
@@ -674,8 +680,8 @@ mod tests {
     #[test]
     fn period_longer_than_display_is_capped() {
         use crate::rational::Rational;
-        let one_seventh = Rational::new(1, 7).unwrap();
-        let (buf, meta) = format_rational_result(one_seventh);
+        let one_seventh = Rational::from_ints(1, 7).unwrap();
+        let (buf, meta) = format_rational_result(&one_seventh);
         assert!(meta.start.is_some(), "1/7 must have a periodic part");
         assert_eq!(meta.len, MAX_PERIOD_DISPLAY);
         assert!(meta.capped, "true period (6 digits) exceeds display cap");
@@ -689,8 +695,8 @@ mod tests {
     #[test]
     fn period_shorter_than_display_is_not_capped() {
         use crate::rational::Rational;
-        let one_fifth = Rational::new(1, 5).unwrap();
-        let (_buf, meta) = format_rational_result(one_fifth);
+        let one_fifth = Rational::from_ints(1, 5).unwrap();
+        let (_buf, meta) = format_rational_result(&one_fifth);
         assert!(meta.start.is_some());
         assert_eq!(meta.len, 4);
         assert!(!meta.capped);
@@ -699,8 +705,8 @@ mod tests {
     #[test]
     fn negative_rational_renders_negate_token() {
         use crate::rational::Rational;
-        let minus_half = Rational::new(-1, 2).unwrap();
-        let (buf, _meta) = format_rational_result(minus_half);
+        let minus_half = Rational::from_ints(-1, 2).unwrap();
+        let (buf, _meta) = format_rational_result(&minus_half);
         assert_eq!(
             buf.first(),
             Some(&CalcToken::Negate),
@@ -876,14 +882,14 @@ mod tests {
     #[test]
     fn ratlit_token_evaluates_to_embedded_value() {
         use crate::rational::Rational;
-        let prev_ans = Rational::new(5, 7).unwrap();
+        let prev_ans = Rational::from_ints(5, 7).unwrap();
         let tokens: Vec<CalcToken> = vec![
-            CalcToken::RatLit(prev_ans),
+            CalcToken::RatLit(prev_ans.clone()),
             CalcToken::Add,
             CalcToken::RatLit(prev_ans),
         ];
         let exprs = build_rat_expr(&tokens).expect("rat track should not collapse");
         let result = eval_rational(&exprs).expect("rat eval should succeed");
-        assert_eq!(result, Rational::new(10, 7).unwrap());
+        assert_eq!(result, Rational::from_ints(10, 7).unwrap());
     }
 }

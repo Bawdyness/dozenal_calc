@@ -10,7 +10,7 @@ pub fn paint_token(
     _ui: &egui::Ui,
     p: &egui::Painter,
     rect: Rect,
-    token: CalcToken,
+    token: &CalcToken,
     color: Color32,
     width: f32,
 ) {

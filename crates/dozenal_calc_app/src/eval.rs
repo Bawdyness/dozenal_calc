@@ -51,11 +51,11 @@ impl DozenalCalcApp {
         match meval::eval_str_with_context(&math_string, (ctx, meval::builtin())) {
             Ok(result) if result.is_finite() => {
                 self.error_msg = None;
-                self.last_ans = rat_result;
+                self.last_ans.clone_from(&rat_result);
                 self.last_result_f64 = result;
 
                 if let Some(r) = rat_result {
-                    let (buf, meta) = format_rational_result(r);
+                    let (buf, meta) = format_rational_result(&r);
                     self.result_buffer = buf;
                     self.result_period_start = meta.start;
                     self.result_period_len = meta.len;

@@ -6,7 +6,10 @@ use crate::rational::Rational;
 
 /// Alle möglichen Tasten-Tokens des Taschenrechners. UI-agnostisch — keine
 /// egui-/Leptos-/Flutter-Abhängigkeit, nur die semantische Bedeutung.
-#[derive(Clone, Copy, PartialEq, Debug)]
+///
+/// Nicht `Copy`, weil die `RatLit(Rational)`-Variante einen heap-allokierten
+/// `BigInt` trägt. Alle Token werden per `clone` oder Referenz weitergegeben.
+#[derive(Clone, PartialEq, Debug)]
 pub enum CalcToken {
     // Main keypad
     Digit(DozenalDigit),

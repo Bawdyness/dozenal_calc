@@ -201,6 +201,7 @@ impl DozenalCalcApp {
         } else if self.display_dec {
             let val = self
                 .last_ans
+                .as_ref()
                 .map_or(self.last_result_f64, dozenal_core::Rational::to_f64);
             let s = format_decimal_result(val);
             ui.painter().text(
@@ -402,7 +403,7 @@ impl DozenalCalcApp {
 
             let mut render_col = |tokens: &[CalcToken]| {
                 ui.vertical(|ui| {
-                    for &token in tokens {
+                    for token in tokens {
                         let (rect, resp) = ui.allocate_at_least(btn_size, egui::Sense::click());
                         let color = if resp.is_pointer_button_down_on() {
                             Color32::LIGHT_RED
@@ -418,7 +419,7 @@ impl DozenalCalcApp {
                             );
                         }
                         if resp.clicked() {
-                            self.handle_click(token);
+                            self.handle_click(token.clone());
                         }
                         ui.add_space(6.0);
                     }
@@ -466,7 +467,7 @@ impl DozenalCalcApp {
         } else {
             Color32::LIGHT_BLUE
         };
-        paint_token(ui, ui.painter(), rect, CalcToken::Equals, color, 2.0);
+        paint_token(ui, ui.painter(), rect, &CalcToken::Equals, color, 2.0);
         if resp.clicked() {
             self.handle_click(CalcToken::Equals);
         }
@@ -496,8 +497,8 @@ impl DozenalCalcApp {
                 } else {
                     color_normal
                 };
-                paint_token(ui, ui.painter(), rect, token, color, 2.0);
-                if app.is_armed(token) {
+                paint_token(ui, ui.painter(), rect, &token, color, 2.0);
+                if app.is_armed(&token) {
                     ui.painter().circle_filled(
                         rect.right_top() + Vec2::new(-5.0, 5.0),
                         3.0,
@@ -592,7 +593,7 @@ impl DozenalCalcApp {
         } else {
             Color32::LIGHT_GREEN
         };
-        paint_token(ui, ui.painter(), rect, CalcToken::Equals, color, 2.0);
+        paint_token(ui, ui.painter(), rect, &CalcToken::Equals, color, 2.0);
         if resp.clicked() {
             self.handle_click(CalcToken::Equals);
         }
@@ -643,29 +644,29 @@ impl DozenalCalcApp {
             let btn_h = (keypad_rect.height() - spacing * 4.0 - extra_gap) / 5.0;
 
             for (col_idx, set) in sets[..4].iter().enumerate() {
-                for (row_idx, &token) in set.iter().enumerate() {
+                for (row_idx, token) in set.iter().enumerate() {
                     let x = keypad_rect.left() + col_idx as f32 * (btn_w + spacing);
                     let y = keypad_rect.top() + row_idx as f32 * (btn_h + spacing);
                     let rect = Rect::from_min_size(Pos2::new(x, y), Vec2::new(btn_w, btn_h));
-                    self.paint_overlay_btn(ui, rect, token);
+                    self.paint_overlay_btn(ui, rect, token.clone());
                 }
             }
             let y10 = keypad_rect.top() + 4.0 * (btn_h + spacing) + extra_gap;
-            for (col_idx, &token) in sets[4].iter().enumerate() {
+            for (col_idx, token) in sets[4].iter().enumerate() {
                 let x = keypad_rect.left() + col_idx as f32 * (btn_w + spacing);
                 let rect = Rect::from_min_size(Pos2::new(x, y10), Vec2::new(btn_w, btn_h));
-                self.paint_overlay_btn(ui, rect, token);
+                self.paint_overlay_btn(ui, rect, token.clone());
             }
         } else {
             let btn_w = (keypad_rect.width() - spacing * 4.0) / 5.0;
             let btn_h = (keypad_rect.height() - spacing * 3.0) / 4.0;
 
             for (col_idx, set) in sets.iter().enumerate() {
-                for (row_idx, &token) in set.iter().enumerate() {
+                for (row_idx, token) in set.iter().enumerate() {
                     let x = keypad_rect.left() + col_idx as f32 * (btn_w + spacing);
                     let y = keypad_rect.top() + row_idx as f32 * (btn_h + spacing);
                     let rect = Rect::from_min_size(Pos2::new(x, y), Vec2::new(btn_w, btn_h));
-                    self.paint_overlay_btn(ui, rect, token);
+                    self.paint_overlay_btn(ui, rect, token.clone());
                 }
             }
         }
@@ -679,8 +680,8 @@ impl DozenalCalcApp {
         } else {
             Color32::LIGHT_BLUE
         };
-        paint_token(ui, ui.painter(), rect, token, color, 2.0);
-        if self.is_armed(token) {
+        paint_token(ui, ui.painter(), rect, &token, color, 2.0);
+        if self.is_armed(&token) {
             ui.painter()
                 .circle_filled(rect.right_top() + Vec2::new(-5.0, 5.0), 3.0, Color32::GOLD);
         }

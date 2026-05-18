@@ -20,6 +20,7 @@ pub enum DozenalDigit {
 
 impl DozenalDigit {
     /// Numerischer Wert der Ziffer (0..=11).
+    #[must_use]
     pub fn to_value(self) -> u32 {
         match self {
             DozenalDigit::D0 => 0,
@@ -78,6 +79,7 @@ impl DozenalConverter {
     }
 
     /// Wandelt eine Ziffer-Liste in einen `f64`-Wert um (Horner via `12.0_f64.powi`).
+    #[must_use]
     pub fn to_decimal(digits: &[DozenalDigit]) -> f64 {
         let mut result = 0.0;
         for (i, digit) in digits.iter().rev().enumerate() {
@@ -87,6 +89,7 @@ impl DozenalConverter {
     }
 
     /// Wandelt eine `f64`-Zahl in ihre Dozenal-Ziffer-Folge (Ganzzahl-Anteil) um.
+    #[must_use]
     pub fn from_decimal(value: f64) -> Vec<DozenalDigit> {
         let mut digits = Vec::new();
         let mut integer_part = value.floor();
@@ -107,6 +110,7 @@ impl DozenalConverter {
 
     /// Extrahiert bis zu `precision` Dozenal-Bruchziffern aus dem Nachkommaanteil.
     /// Bricht früh ab, wenn der Rest unter `FRAC_EPSILON` fällt.
+    #[must_use]
     pub fn frac_to_digits(mut frac: f64, precision: usize) -> Vec<DozenalDigit> {
         let mut digits = Vec::new();
         for _ in 0..precision {

@@ -5,7 +5,7 @@ use num_bigint::BigInt;
 use num_integer::Integer;
 use num_traits::{One, Signed, ToPrimitive, Zero};
 
-use crate::digit::{DozenalConverter, DozenalDigit};
+use crate::digit::DozenalDigit;
 
 /// Exact rational number. Invariants: `den > 0`, always in lowest terms.
 ///
@@ -42,6 +42,7 @@ impl Rational {
         Self::new(BigInt::from(num), BigInt::from(den))
     }
 
+    #[must_use]
     pub fn zero() -> Self {
         Self {
             num: BigInt::zero(),
@@ -49,6 +50,7 @@ impl Rational {
         }
     }
 
+    #[must_use]
     pub fn one() -> Self {
         Self {
             num: BigInt::one(),
@@ -58,6 +60,7 @@ impl Rational {
 
     /// # Panics
     /// Theoretisch unmöglich — `den` ist das Produkt zweier positiver Werte (invariant).
+    #[must_use]
     pub fn add(&self, rhs: &Self) -> Self {
         let num = &self.num * &rhs.den + &rhs.num * &self.den;
         let den = &self.den * &rhs.den;
@@ -66,6 +69,7 @@ impl Rational {
 
     /// # Panics
     /// Theoretisch unmöglich — `den` ist das Produkt zweier positiver Werte (invariant).
+    #[must_use]
     pub fn sub(&self, rhs: &Self) -> Self {
         let num = &self.num * &rhs.den - &rhs.num * &self.den;
         let den = &self.den * &rhs.den;
@@ -74,6 +78,7 @@ impl Rational {
 
     /// # Panics
     /// Theoretisch unmöglich — `den` ist das Produkt zweier positiver Werte (invariant).
+    #[must_use]
     pub fn mul(&self, rhs: &Self) -> Self {
         let num = &self.num * &rhs.num;
         let den = &self.den * &rhs.den;
@@ -126,6 +131,7 @@ impl Rational {
         product.div(&sum)
     }
 
+    #[must_use]
     pub fn to_f64(&self) -> f64 {
         // BigInt → f64 ist verlustbehaftet bei sehr großen Werten;
         // num-traits liefert das nächste darstellbare f64.
@@ -134,25 +140,40 @@ impl Rational {
         num / den
     }
 
-    /// Decomposes the fraction into its base-12 representation.
-    /// Returns `(integer_digits, pre_period_digits, period_digits)`.
-    /// `period_digits` is empty iff the expansion is finite.
-    /// The period is capped at 100 digits to bound computation.
-    pub fn to_dozenal_periodic(&self) -> (Vec<DozenalDigit>, Vec<DozenalDigit>, Vec<DozenalDigit>) {
+    /// `true` wenn die Zahl strikt kleiner als 0 ist. Kapselt den
+    /// `num_traits::Signed`-Import, damit Consumer der Crate nicht selbst
+    /// `num_traits` ziehen müssen.
+    #[must_use]
+    pub fn is_negative(&self) -> bool {
+        self.num.is_negative()
+    }
+
+    /// Decomposes the fraction into its representation in the given `base`.
+    /// Returns `(integer_digits, pre_period_digits, period_digits)` with each
+    /// digit as a `u32` in `0..base`. `period_digits` is empty iff the
+    /// expansion is finite in that base. The period is capped at 100 digits
+    /// to bound computation; beyond that the tail is reported as pre-period
+    /// (no period detected). Sign is dropped — the magnitude is returned.
+    ///
+    /// Works for any `base >= 2`. For `base == 12` see
+    /// [`to_dozenal_periodic`](Self::to_dozenal_periodic), which wraps this
+    /// with the project-specific `DozenalDigit` enum.
+    ///
+    /// # Panics
+    /// Panics if `base < 2`.
+    #[must_use]
+    pub fn to_periodic(&self, base: u32) -> (Vec<u32>, Vec<u32>, Vec<u32>) {
+        assert!(base >= 2, "base must be at least 2");
         let abs_num = self.num.abs();
         let den = self.den.clone();
-        let twelve = BigInt::from(12);
+        let b = BigInt::from(base);
 
         let int_part = &abs_num / &den;
         let mut rem = &abs_num % &den;
 
-        let int_digits = int_part.to_f64().map_or_else(
-            // Sehr großer Integer-Anteil: aus dem Bruch raus konvertieren.
-            || big_int_to_dozenal_digits(&int_part),
-            DozenalConverter::from_decimal,
-        );
+        let int_digits = big_int_to_digits(&int_part, &b);
 
-        let mut frac_digits: Vec<DozenalDigit> = Vec::new();
+        let mut frac_digits: Vec<u32> = Vec::new();
         let mut seen: std::collections::HashMap<BigInt, usize> = std::collections::HashMap::new();
 
         loop {
@@ -167,34 +188,51 @@ impl Rational {
                 return (int_digits, frac_digits, Vec::new());
             }
             seen.insert(rem.clone(), frac_digits.len());
-            rem *= &twelve;
+            rem *= &b;
             let digit_val = (&rem / &den).to_u32().unwrap_or(0);
             rem %= &den;
-            if let Some(d) = DozenalDigit::from_value(digit_val) {
-                frac_digits.push(d);
-            }
+            frac_digits.push(digit_val);
         }
+    }
+
+    /// Decomposes the fraction in base 12 with project-specific `DozenalDigit`.
+    /// Thin wrapper around [`to_periodic`](Self::to_periodic) — see there for
+    /// semantics. Convenience for callers that consume dozenal digits directly.
+    #[must_use]
+    pub fn to_dozenal_periodic(&self) -> (Vec<DozenalDigit>, Vec<DozenalDigit>, Vec<DozenalDigit>) {
+        let (int_d, pre_d, per_d) = self.to_periodic(12);
+        (
+            digits_to_doz(&int_d),
+            digits_to_doz(&pre_d),
+            digits_to_doz(&per_d),
+        )
     }
 }
 
-/// Hilfsfunktion: konvertiert eine beliebig große positive BigInt in
-/// eine Dozenal-Ziffer-Folge per Horner-Division.
-fn big_int_to_dozenal_digits(value: &BigInt) -> Vec<DozenalDigit> {
+/// Beliebig grosse nicht-negative BigInt in eine Ziffer-Folge in `base`
+/// (Horner-Division). Vorzeichen wird ignoriert; `0` ergibt `[0]`.
+fn big_int_to_digits(value: &BigInt, base: &BigInt) -> Vec<u32> {
     if value.is_zero() {
-        return vec![DozenalDigit::D0];
+        return vec![0];
     }
-    let twelve = BigInt::from(12);
     let mut digits = Vec::new();
-    let mut v = value.clone();
+    let mut v = value.abs();
     while !v.is_zero() {
-        let rem = (&v % &twelve).to_u32().unwrap_or(0);
-        if let Some(d) = DozenalDigit::from_value(rem) {
-            digits.push(d);
-        }
-        v /= &twelve;
+        let rem = (&v % base).to_u32().unwrap_or(0);
+        digits.push(rem);
+        v /= base;
     }
     digits.reverse();
     digits
+}
+
+/// Ziffern-Werte (`u32 < 12`, garantiert durch `to_periodic(12)`) in
+/// `DozenalDigit` umwandeln. Werte ausserhalb des erlaubten Bereichs werden
+/// auf `D0` gemappt — kann hier in der Praxis nicht auftreten.
+fn digits_to_doz(vals: &[u32]) -> Vec<DozenalDigit> {
+    vals.iter()
+        .map(|&v| DozenalDigit::from_value(v).unwrap_or(DozenalDigit::D0))
+        .collect()
 }
 
 /// Flat token stream for the rational evaluation track.
@@ -485,6 +523,71 @@ mod tests {
         assert_eq!(period[3], DozenalDigit::D10);
         assert_eq!(period[4], DozenalDigit::D3);
         assert_eq!(period[5], DozenalDigit::D5);
+    }
+
+    #[test]
+    fn periodic_base10_finite_quarter() {
+        // 1/4 = 0.25 — endlich in Basis 10, periodisch in Basis 12.
+        let (int, pre, period) = r(1, 4).to_periodic(10);
+        assert_eq!(int, vec![0]);
+        assert_eq!(pre, vec![2, 5]);
+        assert!(period.is_empty());
+    }
+
+    #[test]
+    fn periodic_base10_one_third() {
+        // 1/3 = 0.333… — endlich in Basis 12 (`0.4`), periodisch in Basis 10.
+        let (_int, pre, period) = r(1, 3).to_periodic(10);
+        assert!(pre.is_empty());
+        assert_eq!(period, vec![3]);
+    }
+
+    #[test]
+    fn periodic_base10_one_seventh() {
+        // Klassiker: 1/7 = 0.142857̄ in Basis 10.
+        let (_int, pre, period) = r(1, 7).to_periodic(10);
+        assert!(pre.is_empty());
+        assert_eq!(period, vec![1, 4, 2, 8, 5, 7]);
+    }
+
+    #[test]
+    fn periodic_base10_one_twelfth() {
+        // 1/12 = 0.08333… — Vorperiode `08`, Periode `3`.
+        let (_int, pre, period) = r(1, 12).to_periodic(10);
+        assert_eq!(pre, vec![0, 8]);
+        assert_eq!(period, vec![3]);
+    }
+
+    #[test]
+    fn periodic_base10_integer() {
+        let (int, pre, period) = r(42, 1).to_periodic(10);
+        assert_eq!(int, vec![4, 2]);
+        assert!(pre.is_empty());
+        assert!(period.is_empty());
+    }
+
+    #[test]
+    fn periodic_base10_negative_drops_sign() {
+        // Negatives Vorzeichen wird verworfen — die Magnitude entscheidet.
+        let (int, pre, period) = r(-1, 4).to_periodic(10);
+        assert_eq!(int, vec![0]);
+        assert_eq!(pre, vec![2, 5]);
+        assert!(period.is_empty());
+    }
+
+    #[test]
+    fn periodic_base16_one_third() {
+        // 1/3 in Basis 16: 0.555… — Periode `5`. Belegt, dass `to_periodic`
+        // jenseits 10/12 sauber arbeitet.
+        let (_int, pre, period) = r(1, 3).to_periodic(16);
+        assert!(pre.is_empty());
+        assert_eq!(period, vec![5]);
+    }
+
+    #[test]
+    #[should_panic(expected = "base must be at least 2")]
+    fn periodic_base_one_panics() {
+        let _ = r(1, 2).to_periodic(1);
     }
 
     fn rx(n: i128, d: i128) -> RatExpr {

@@ -372,6 +372,7 @@ fn left_operand_token_range(tokens: &[CalcToken], op_pos: usize) -> Option<(usiz
 /// Mehrere Durchläufe lösen verschachtelte Fälle wie `5!!` korrekt auf: nach
 /// dem ersten Rewrite `[Factorial, (, 5, )]` umschlingt der zweite Durchlauf
 /// das äußere `!` um den geklammerten Zwischenstand.
+#[must_use]
 pub fn resolve_postfix(tokens: &[CalcToken]) -> Vec<CalcToken> {
     let mut current = tokens.to_vec();
     loop {
@@ -408,6 +409,7 @@ pub fn resolve_postfix(tokens: &[CalcToken]) -> Vec<CalcToken> {
 
 /// Expands a token sequence by inserting `CalcToken::Mul` wherever algebraic
 /// notation implies multiplication (e.g. `π π`, `2(`, `)(`, `2 sin`).
+#[must_use]
 pub fn with_implicit_muls(tokens: &[CalcToken]) -> Vec<CalcToken> {
     let mut result = Vec::with_capacity(tokens.len() + 4);
     for (i, token) in tokens.iter().enumerate() {
@@ -493,6 +495,7 @@ fn const_value(token: &CalcToken) -> Option<f64> {
 
 /// Builds the final meval-ready expression string from an already-`with_implicit_muls`-expanded
 /// token sequence. Resolves `⊕`, `√`, `log` into pure infix and balances any unclosed parens.
+#[must_use]
 pub fn build_meval_string(expanded: &[CalcToken]) -> String {
     let mut int_digits = Vec::new();
     let mut frac_digits = Vec::new();
@@ -555,11 +558,11 @@ pub struct PeriodMeta {
 }
 
 /// Renders an exact `Rational` as a token sequence with optional period metadata.
+#[must_use]
 pub fn format_rational_result(r: &Rational) -> (Vec<CalcToken>, PeriodMeta) {
-    use num_traits::Signed;
     let (int_d, pre_d, period_d) = r.to_dozenal_periodic();
     let mut buf: Vec<CalcToken> = Vec::new();
-    if r.num.is_negative() {
+    if r.is_negative() {
         buf.push(CalcToken::Negate);
     }
     buf.extend(int_d.into_iter().map(CalcToken::Digit));
@@ -583,8 +586,34 @@ pub fn format_rational_result(r: &Rational) -> (Vec<CalcToken>, PeriodMeta) {
     (buf, PeriodMeta { start, len, capped })
 }
 
+/// Formats an `f64` as a plain decimal string with up to 10 significant
+/// fractional digits, trailing zeros stripped. `NaN` and infinities are
+/// reported with their conventional symbols (`"NaN"`, `"∞"`, `"-∞"`).
+///
+/// Universally useful — independent of dozenal semantics — and reused by
+/// every render path that needs a base-10 view on a numeric result.
+#[must_use]
+pub fn format_f64_as_decimal(val: f64) -> String {
+    if !val.is_finite() {
+        return if val.is_nan() {
+            "NaN".to_string()
+        } else if val.is_sign_negative() {
+            "-∞".to_string()
+        } else {
+            "∞".to_string()
+        };
+    }
+    let s = format!("{val:.10}");
+    if s.contains('.') {
+        s.trim_end_matches('0').trim_end_matches('.').to_string()
+    } else {
+        s
+    }
+}
+
 /// Renders an f64 result as a token sequence with `F64_FRAC_DIGITS` fractional digits
 /// (no period — used when the rational track has collapsed).
+#[must_use]
 pub fn format_f64_result(value: f64) -> Vec<CalcToken> {
     let mut buf: Vec<CalcToken> = Vec::new();
     let mut val = value;

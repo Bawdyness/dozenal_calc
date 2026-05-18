@@ -28,6 +28,8 @@ Zwölf ist durch 2, 3, 4 und 6 teilbar — Basis 10 nur durch 2 und 5. Das macht
 
 Liefert die exakte rationale Auswertung einen periodischen Bruch, wird die Periode mit einem Überstrich dargestellt. Perioden über fünf Stellen werden auf fünf gekürzt und mit `…` auf Überstrich-Höhe markiert. Endliche Brüche werden ohne Überstrich angezeigt. Diese Auswertung überlebt STO/RCL- und Ans-Zyklen.
 
+In der Leptos-Variante zeigt `Doz↔Dez` dasselbe Resultat in beiden Basen — die Eingabe bleibt immer dozenal, aber die Ergebniszeile rendert wahlweise in Basis 12 oder 10, jeweils mit eigener Periodenerkennung. So sieht man auf einen Blick, dass `1/3` in Doz endlich (`0.4`) und in Dez periodisch (`0.3̄`) ist.
+
 **Info-Bereich**
 
 12 deutsche Kapitel über Dozenalmathematik, Geometrie und Geschichte — zugänglich über Taste 10.3.

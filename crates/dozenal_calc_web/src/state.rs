@@ -17,10 +17,11 @@ use dozenal_core::{
 };
 use leptos::prelude::*;
 
-/// Aktive Zahl-Basis für Eingabe und Anzeige. Spiegelt das Flutter-`NumeralSystem`.
-/// `Dez` wird in Phase D durch die `Doz↔Dez`-Mode-Taste genutzt.
+/// Aktive Basis der **Result-Anzeige** (Eingabe bleibt immer dozenal).
+/// `Doz` ist der Default und zeigt das exakte Resultat mit den Dozenal-
+/// Glyphen; `Dez` rendert dasselbe Resultat in Basis 10 als Plain-Text,
+/// inklusive Periodenerkennung über `Rational::to_periodic`.
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
-#[allow(dead_code)]
 pub enum NumeralSystem {
     #[default]
     Doz,
@@ -336,9 +337,11 @@ impl CalcState {
                 self.overlay_open.set(false);
             }
             CalcToken::DozDec => {
-                // Toggle des Zahlsystem-Indikators. Die tatsächliche
-                // Basis-Konversion des Buffers folgt als Folge-Task —
-                // hier wird nur das Anzeige-Label geschwenkt.
+                // View-Toggle: die Eingabe bleibt immer dozenal, nur die
+                // Result-Zeile wechselt die Basis. Bewusste Designentscheidung
+                // gegen Buffer-Rewriting — siehe Modell C in der Projekt-
+                // Dokumentation. Periodenerkennung läuft in beiden Basen
+                // direkt aus `last_ans` via `Rational::to_periodic`.
                 self.numeral_system.update(|n| {
                     *n = match n {
                         NumeralSystem::Doz => NumeralSystem::Dez,

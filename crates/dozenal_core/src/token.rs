@@ -83,6 +83,7 @@ pub enum AngleMode {
 }
 
 impl AngleMode {
+    #[must_use]
     pub fn label(self) -> &'static str {
         match self {
             AngleMode::Deg => "DEG",
@@ -91,6 +92,7 @@ impl AngleMode {
         }
     }
 
+    #[must_use]
     pub fn next(self) -> Self {
         match self {
             AngleMode::Deg => AngleMode::Rad,
@@ -100,6 +102,7 @@ impl AngleMode {
     }
 
     /// Konvertiert einen Winkel von diesem Modus in Radian.
+    #[must_use]
     pub fn to_rad(self, x: f64) -> f64 {
         match self {
             AngleMode::Deg => x.to_radians(),
@@ -109,6 +112,7 @@ impl AngleMode {
     }
 
     /// Konvertiert ein Resultat in Radian zurück in die Einheit dieses Modus.
+    #[must_use]
     pub fn rad_to_unit(self, x: f64) -> f64 {
         match self {
             AngleMode::Deg => x.to_degrees(),

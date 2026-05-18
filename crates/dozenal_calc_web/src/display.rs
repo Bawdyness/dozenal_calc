@@ -15,8 +15,8 @@
 //! (DEG/RAD/GRD), Zahlsystem (DOZ/DEZ), Fehlermeldung in Rot.
 
 use crate::glyph::Glyph;
-use crate::state::CalcState;
-use dozenal_core::CalcToken;
+use crate::state::{CalcState, NumeralSystem};
+use dozenal_core::{CalcToken, MAX_PERIOD_DISPLAY, format_f64_as_decimal};
 use leptos::prelude::*;
 
 #[component]
@@ -93,53 +93,132 @@ fn ResultTokens() -> impl IntoView {
 
     view! {
         <span class="token-row token-row-result">
-            {move || {
-                let approx = state.is_f64_fallback();
-                let period_start = state.result_period_start.get();
-                let period_len = state.result_period_len.get();
-                let capped = state.result_period_capped.get();
-
-                state.result_buffer.with(|buf| {
-                    let mut out: Vec<AnyView> = Vec::new();
-                    if approx {
-                        out.push(view! { <span class="approx-prefix">"≈"</span> }.into_any());
-                    }
-                    if let Some(start) = period_start {
-                        // Stellen vor der Periode normal rendern
-                        for tok in &buf[..start] {
-                            out.push(render_token_node(tok));
-                        }
-                        // Stellen ab `start` mit Überstrich
-                        let end = (start + period_len).min(buf.len());
-                        let mut period_inner: Vec<AnyView> = Vec::new();
-                        for tok in &buf[start..end] {
-                            period_inner.push(render_token_node(tok));
-                        }
-                        out.push(view! {
-                            <span class="periodic">
-                                {period_inner.into_view()}
-                            </span>
-                        }.into_any());
-                        if capped {
-                            // State C: Auslassung auf Überstrich-Höhe
-                            out.push(view! { <span class="ellipsis-raised">"…"</span> }.into_any());
-                        }
-                        // Falls noch Tokens nach der gekappten Periode kommen (selten):
-                        if end < buf.len() {
-                            for tok in &buf[end..] {
-                                out.push(render_token_node(tok));
-                            }
-                        }
-                    } else {
-                        for tok in buf {
-                            out.push(render_token_node(tok));
-                        }
-                    }
-                    out.into_view()
-                })
+            {move || match state.numeral_system.get() {
+                NumeralSystem::Doz => view! { <DozResult/> }.into_any(),
+                NumeralSystem::Dez => view! { <DecResult/> }.into_any(),
             }}
         </span>
     }
+}
+
+/// Dozenal-Resultat: rendert `result_buffer` mit den Dozenal-Glyphen und der
+/// vom Rational-Track ermittelten Periode (Doz-Schiene, wie bisher).
+#[component]
+fn DozResult() -> impl IntoView {
+    let state = use_context::<CalcState>().expect("CalcState im Context");
+    view! {
+        {move || {
+            let approx = state.is_f64_fallback();
+            let period_start = state.result_period_start.get();
+            let period_len = state.result_period_len.get();
+            let capped = state.result_period_capped.get();
+
+            state.result_buffer.with(|buf| {
+                let mut out: Vec<AnyView> = Vec::new();
+                if approx {
+                    out.push(view! { <span class="approx-prefix">"≈"</span> }.into_any());
+                }
+                if let Some(start) = period_start {
+                    for tok in &buf[..start] {
+                        out.push(render_token_node(tok));
+                    }
+                    let end = (start + period_len).min(buf.len());
+                    let mut period_inner: Vec<AnyView> = Vec::new();
+                    for tok in &buf[start..end] {
+                        period_inner.push(render_token_node(tok));
+                    }
+                    out.push(view! {
+                        <span class="periodic">{period_inner.into_view()}</span>
+                    }.into_any());
+                    if capped {
+                        out.push(view! { <span class="ellipsis-raised">"…"</span> }.into_any());
+                    }
+                    if end < buf.len() {
+                        for tok in &buf[end..] {
+                            out.push(render_token_node(tok));
+                        }
+                    }
+                } else {
+                    for tok in buf {
+                        out.push(render_token_node(tok));
+                    }
+                }
+                out.into_view()
+            })
+        }}
+    }
+}
+
+/// Dezimal-Resultat: berechnet aus `last_ans` (Rational) die Periode in
+/// Basis 10 und rendert sie als Plain-Text-Ziffern mit Überstrich. Ist die
+/// Rational-Schiene kollabiert, fällt es auf `last_result_f64` zurück und
+/// zeigt den `≈`-Prefix wie der Doz-Pfad.
+///
+/// Die Eingabe bleibt immer dozenal — dies ist eine reine View-Schicht,
+/// kein zweiter Eingabemodus.
+#[component]
+fn DecResult() -> impl IntoView {
+    let state = use_context::<CalcState>().expect("CalcState im Context");
+    view! {
+        {move || state.last_ans.get().map_or_else(
+            || render_dec_approx(state.last_result_f64.get()),
+            |r| render_dec_exact(&r),
+        )}
+    }
+}
+
+/// Exaktes Dezimal-Resultat aus dem Rational: Vorzeichen, Integer- und
+/// Vorperiode-Ziffern als Plain-Text, Periode mit Überstrich (gekappt bei
+/// `MAX_PERIOD_DISPLAY` und durch `…` markiert).
+fn render_dec_exact(r: &dozenal_core::Rational) -> AnyView {
+    let (int_d, pre_d, period_d) = r.to_periodic(10);
+    let mut out: Vec<AnyView> = Vec::new();
+    if r.is_negative() {
+        out.push(view! { <span class="punct neg">"−"</span> }.into_any());
+    }
+    for d in &int_d {
+        out.push(dec_digit(*d));
+    }
+    if !pre_d.is_empty() || !period_d.is_empty() {
+        out.push(view! { <span class="punct">"."</span> }.into_any());
+    }
+    for d in &pre_d {
+        out.push(dec_digit(*d));
+    }
+    if !period_d.is_empty() {
+        let capped = period_d.len() > MAX_PERIOD_DISPLAY;
+        let shown = period_d.iter().take(MAX_PERIOD_DISPLAY).copied();
+        let period_inner: Vec<AnyView> = shown.map(dec_digit).collect();
+        out.push(
+            view! {
+                <span class="periodic">{period_inner.into_view()}</span>
+            }
+            .into_any(),
+        );
+        if capped {
+            out.push(view! { <span class="ellipsis-raised">"…"</span> }.into_any());
+        }
+    }
+    out.into_view().into_any()
+}
+
+/// Rational-Schiene kollabiert (transzendent / irrational): f64 als
+/// Dezimal-String, mit `≈`-Prefix wie im Doz-Pfad.
+fn render_dec_approx(val: f64) -> AnyView {
+    let s = format_f64_as_decimal(val);
+    view! {
+        <span class="approx-prefix">"≈"</span>
+        <span class="dec-number">{s}</span>
+    }
+    .into_any()
+}
+
+/// Eine einzelne Dezimal-Ziffer als Plain-Text-Span — bewusst *nicht* als
+/// `<Glyph>`, damit Doz-Modus und Dez-Modus visuell sofort unterscheidbar
+/// sind. Das ist Modell-C-Identität: Dezimal ist ein Vergleichsfenster,
+/// nicht ein zweiter Eingabemodus.
+fn dec_digit(value: u32) -> AnyView {
+    view! { <span class="dec-digit">{value.to_string()}</span> }.into_any()
 }
 
 /// Rendert einen einzelnen CalcToken in seine sichtbare Form.

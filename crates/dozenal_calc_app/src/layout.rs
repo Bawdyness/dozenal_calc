@@ -4,30 +4,13 @@
 use crate::info_content::{INFO_TITLES, draw_info_chapter};
 use crate::painting::{paint_dozenal_digit, paint_token};
 use crate::state::{DozenalCalcApp, InfoState};
-use dozenal_core::{CalcToken, DozenalDigit};
+use dozenal_core::{CalcToken, DozenalDigit, format_f64_as_decimal};
 use eframe::egui;
 use egui::{Align2, Color32, FontId, Pos2, Rect, Stroke, Vec2};
 
 pub const MOBILE_BREAKPOINT_PX: f32 = 500.0;
 const DISPLAY_LINE_H: f32 = 50.0; // height of each display line
 const DISPLAY_GAP: f32 = 10.0; // gap between input and result line
-
-/// Formats an f64 as a decimal string with up to 10 significant digits, trailing zeros removed.
-pub fn format_decimal_result(val: f64) -> String {
-    if !val.is_finite() {
-        return if val.is_nan() {
-            "NaN".to_string()
-        } else {
-            "∞".to_string()
-        };
-    }
-    let s = format!("{val:.10}");
-    if s.contains('.') {
-        s.trim_end_matches('0').trim_end_matches('.').to_string()
-    } else {
-        s
-    }
-}
 
 impl DozenalCalcApp {
     /// Renders the two-line display area (background + all content).
@@ -203,7 +186,7 @@ impl DozenalCalcApp {
                 .last_ans
                 .as_ref()
                 .map_or(self.last_result_f64, dozenal_core::Rational::to_f64);
-            let s = format_decimal_result(val);
+            let s = format_f64_as_decimal(val);
             ui.painter().text(
                 result_rect.center(),
                 Align2::CENTER_CENTER,
